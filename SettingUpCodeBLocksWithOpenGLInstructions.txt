@@ -1,0 +1,105 @@
+# Setting Up CodeBlocks for GateWay3D on a New Computer
+
+Based on our discussions, here's a guide to set up CodeBlocks with GLEW and GLFW using MSYS2 for the GateWay3D project:
+
+## Step 1: Install Required Software
+
+1. **Install CodeBlocks**:
+   - Download the latest version from [codeblocks.org](http://www.codeblocks.org/downloads/binaries/)
+   - Choose the version that includes MinGW (e.g., `codeblocks-20.03mingw-setup.exe`)
+
+2. **Install MSYS2**:
+   - Download from [msys2.org](https://www.msys2.org/)
+   - Run the installer and follow the prompts
+   - When installation completes, launch MSYS2 UCRT64 terminal
+
+3. **Install Dependencies via MSYS2**:
+   ```bash
+   pacman -S mingw-w64-ucrt-x86_64-gcc
+   pacman -S mingw-w64-ucrt-x86_64-glfw
+   pacman -S mingw-w64-ucrt-x86_64-glew
+   pacman -S mingw-w64-ucrt-x86_64-glm
+   ```
+
+## Step 2: Configure CodeBlocks
+
+1. **Open CodeBlocks**
+
+2. **Create a New Project**:
+   - File → New → Project
+   - Select "Console application" and choose C++
+   - Name it "GateWay3D" or import the existing project
+
+3. **Configure Project Build Options**:
+   - Right-click on the project → Build Options
+   - Go to "Search directories" tab → "Compiler" subtab
+   - Add: `C:/msys64/ucrt64/include`
+   - Go to "Search directories" tab → "Linker" subtab
+   - Add: `C:/msys64/ucrt64/lib`
+
+4. **Configure Libraries**:
+   - Go to "Linker settings" tab
+   - Add these libraries in this order:
+     ```
+     glew32
+     glfw3
+     opengl32
+     gdi32
+     ```
+
+## Step 3: Project Configuration
+
+1. **Add your source files** to the project
+   - Make sure to use GLEW instead of GLAD:
+     ```cpp
+     #include <GL/glew.h>
+     #include <GLFW/glfw3.h>
+     #include <glm/glm.hpp>
+     // etc.
+     ```
+
+2. **Ensure you use GLEW initialization**:
+   ```cpp
+   // Create GLFW window first
+   glfwMakeContextCurrent(window);
+   
+   // Initialize GLEW
+   glewExperimental = GL_TRUE;
+   GLenum err = glewInit();
+   if (err != GLEW_OK) {
+       std::cerr << "Failed to initialize GLEW" << std::endl;
+       return -1;
+   }
+   ```
+
+3. **Create required resource files**:
+   - Make sure to create `map.txt`, `shader.vs`, and `shader.fs` in your project directory
+
+## Step 4: Troubleshooting Common Issues
+
+1. **Linker errors about missing GDI functions**:
+   - Check the order of libraries (glew32, glfw3, opengl32, gdi32)
+   - Make sure you've installed all required MSYS2 packages
+
+2. **GLEW/GLAD conflicts**:
+   - Make sure you're only including GLEW headers, not GLAD
+   - Use GLEW initialization code, not GLAD loading functions
+
+3. **"Map class const" errors**:
+   - Make sure your `isWall()` method is marked as `const`
+
+4. **Check your project paths**: 
+   - Make sure file paths are relative or use correct absolute paths
+
+## Step 5: Run the Game
+
+1. **Build & Run**: Press F9 or click the Build and Run button
+2. If you see a window with a 3D environment, congratulations!
+
+## Notes
+
+- This setup uses MSYS2's packages for a consistent environment
+- The project uses simple text files for level design (`map.txt`)
+- Shader files are created at runtime if they don't exist
+
+Remember to copy all project files, including the map and any assets, to the new computer when transferring the project.
