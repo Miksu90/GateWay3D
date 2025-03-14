@@ -1,0 +1,25 @@
+# Build files
+*.o
+*.obj
+*.exe
+*.out
+*.dll
+*.so
+*.dylib
+
+# CodeBlocks specific
+*.depend
+*.layout
+bin/
+obj/
+
+# IDE settings
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# OS specific
+.DS_Store
+Thumbs.db
