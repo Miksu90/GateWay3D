@@ -14,11 +14,17 @@
 				<Compiler>
 					<Add option="-g" />
 					<Add directory="C:/Users/pfe90/CodeBlocks/MinGW/include" />
+					<Add directory="C:/msys64/ucrt64/include" />
 				</Compiler>
 				<Linker>
+					<Add library="glfw3" />
+					<Add library="gdi32" />
 					<Add library="opengl32" />
+					<Add library="user32" />
+					<Add library="kernel32" />
 					<Add library="glu32" />
-					<Add library="C:/Users/pfe90/CodeBlocks/MinGW/lib/libglfw3.a" />
+					<Add library="glew32" />
+					<Add directory="C:/msys64/ucrt64/lib" />
 				</Linker>
 			</Target>
 			<Target title="Release">

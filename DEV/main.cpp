@@ -324,302 +324,69 @@ public:
 
 // Here's a fixed version of the checkCollision function that uses the const-correct isWall method
 bool checkCollision(const glm::vec3& position, const Map& map, float radius) {
+    // Check collision with maps (simple circle-box collision)
+    // Check the four corners of the player's "circle"
     float x = position.x;
     float z = position.z;
 
-    // Check center point and 4 cardinal directions
+    // Check center point and 4 points around the player
     if (map.isWall(x, z)) return true;
     if (map.isWall(x + radius, z)) return true;
     if (map.isWall(x - radius, z)) return true;
     if (map.isWall(x, z + radius)) return true;
     if (map.isWall(x, z - radius)) return true;
 
-    // Add diagonal checks
-    if (map.isWall(x + radius, z + radius)) return true;
-    if (map.isWall(x + radius, z - radius)) return true;
-    if (map.isWall(x - radius, z + radius)) return true;
-    if (map.isWall(x - radius, z - radius)) return true;
-
     return false;
 }
 
-// Ray-Box intersection test for more precise collision detection
-bool rayBoxIntersection(const glm::vec3& rayOrigin, const glm::vec3& rayDir,
-                        const glm::vec3& boxMin, const glm::vec3& boxMax,
-                        float& tMin, float& tMax) {
-    // Compute the intersection parameters
-    glm::vec3 invDir = 1.0f / rayDir;
-    glm::vec3 tMinVec = (boxMin - rayOrigin) * invDir;
-    glm::vec3 tMaxVec = (boxMax - rayOrigin) * invDir;
-
-    // Handle negative directions
-    if (invDir.x < 0.0f) std::swap(tMinVec.x, tMaxVec.x);
-    if (invDir.y < 0.0f) std::swap(tMinVec.y, tMaxVec.y);
-    if (invDir.z < 0.0f) std::swap(tMinVec.z, tMaxVec.z);
-
-    // Find the largest tMin and smallest tMax
-    tMin = std::max(std::max(tMinVec.x, tMinVec.y), tMinVec.z);
-    tMax = std::min(std::min(tMaxVec.x, tMaxVec.y), tMaxVec.z);
-
-    // Check for intersection
-    return tMax >= tMin && tMax >= 0.0f;
-}
-
-// Swept sphere collision detection against a cell-based world
-bool sweptSphereCollision(const glm::vec3& start, const glm::vec3& end,
-                          const Map& map, float radius, glm::vec3& adjustedEnd) {
-    // Direction and distance of movement
-    glm::vec3 dir = end - start;
-    float dist = glm::length(dir);
-
-    // If not moving, no collision
-    if (dist < 0.0001f) {
-        adjustedEnd = end;
-        return false;
-    }
-
-    // Normalize direction
-    dir = dir / dist;
-
-    // Check the cells along the path
-    float t = 0.0f;
-
-    // Create a bounding box around the sphere
-    float cellSize = CELL_SIZE;
-
-    // Check the cells within a certain distance from the path
-    const int checkDistance = 2; // Check up to 2 cells away
-
-    // Get the minimum and maximum cell coordinates to check
-    int startX = static_cast<int>((start.x - radius) / cellSize) - checkDistance;
-    int startZ = static_cast<int>((start.z - radius) / cellSize) - checkDistance;
-    int endX = static_cast<int>((end.x + radius) / cellSize) + checkDistance;
-    int endZ = static_cast<int>((end.z + radius) / cellSize) + checkDistance;
-
-    // Clamp to map boundaries
-    startX = std::max(0, startX);
-    startZ = std::max(0, startZ);
-    endX = std::min(map.width - 1, endX);
-    endZ = std::min(map.height - 1, endZ);
-
-    bool collision = false;
-    float closestT = 1.0f; // Normalized distance along the path (0 to 1)
-
-    // Check each potential wall cell
-    for (int z = startZ; z <= endZ; z++) {
-        for (int x = startX; x <= endX; x++) {
-            if (map.grid[z][x] == 1) { // If this is a wall
-                // Create a box for this cell
-                glm::vec3 boxMin(x * cellSize, start.y - radius, z * cellSize);
-                glm::vec3 boxMax(boxMin.x + cellSize, start.y + radius, boxMin.z + cellSize);
-
-                // Check if the sphere might intersect this box
-                // We need to expand the box by the radius of the sphere
-                boxMin -= glm::vec3(radius);
-                boxMax += glm::vec3(radius);
-
-                float tMin, tMax;
-                if (rayBoxIntersection(start, dir, boxMin, boxMax, tMin, tMax) && tMin < dist) {
-                    // If collision is closer than previous closest
-                    if (tMin < closestT * dist) {
-                        closestT = tMin / dist;
-                        collision = true;
-                    }
-                }
-            }
-        }
-    }
-
-    // If collision occurred, adjust the end point
-    if (collision) {
-        // Move slightly less than the collision point
-        closestT = std::max(0.0f, closestT - 0.01f);
-        adjustedEnd = start + dir * dist * closestT;
-    } else {
-        adjustedEnd = end;
-    }
-
-    return collision;
-}
-
-// Most robust collision detection using circle vs. grid cells with continuous checking
-bool checkCollisionCircle(const glm::vec3& position, const Map& map, float radius) {
-    // Get the grid cell that contains the center of the circle
-    int centerX = static_cast<int>(position.x / CELL_SIZE);
-    int centerZ = static_cast<int>(position.z / CELL_SIZE);
-
-    // Check all cells that could possibly intersect with the circle
-    int radiusCells = static_cast<int>(std::ceil(radius / CELL_SIZE)) + 1;
-
-    for (int z = centerZ - radiusCells; z <= centerZ + radiusCells; z++) {
-        for (int x = centerX - radiusCells; x <= centerX + radiusCells; x++) {
-            // Skip out-of-bounds cells (they're handled as walls by map.isWall)
-            if (x < 0 || x >= map.width || z < 0 || z >= map.height) continue;
-
-            // Skip empty cells
-            if (map.grid[z][x] == 0) continue;
-
-            // If this is a wall, check distance from player to cell edges
-
-            // Calculate the closest point on the cell to the circle center
-            float closestX = std::max(static_cast<float>(x * CELL_SIZE),
-                            std::min(position.x, static_cast<float>((x + 1) * CELL_SIZE)));
-            float closestZ = std::max(static_cast<float>(z * CELL_SIZE),
-                            std::min(position.z, static_cast<float>((z + 1) * CELL_SIZE)));
-
-            // Calculate distance squared (avoid square root for performance)
-            float distanceX = position.x - closestX;
-            float distanceZ = position.z - closestZ;
-            float distanceSquared = distanceX * distanceX + distanceZ * distanceZ;
-
-            // Check if the closest point is within the circle's radius
-            if (distanceSquared < radius * radius) {
-                return true; // Collision detected
-            }
-        }
-    }
-
-    return false;
-}
-
-// Very simple but extremely robust collision check
-bool collideWithMap(const glm::vec3& position, const Map& map, float radius) {
-    // Use a slightly larger radius for extra safety
-    float safetyRadius = radius * 1.6f;
-
-    // Check a high-density grid of points around the player
-    const int NUM_SAMPLES = 16;
-    for (int i = 0; i < NUM_SAMPLES; i++) {
-        float angle = (float)i / NUM_SAMPLES * 2.0f * M_PI;
-        float checkX = position.x + safetyRadius * cos(angle);
-        float checkZ = position.z + safetyRadius * sin(angle);
-
-        if (map.isWall(checkX, checkZ)) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-// Process movement with very small steps to prevent any chance of corner penetration
+// Process keyboard input and move player
 void processMovement(Camera& camera, const Map& map, float deltaTime) {
-    // Calculate movement vector based on input
-    glm::vec3 moveDir(0.0f);
+    float speed = playerSpeed * deltaTime;
+    glm::vec3 newPosition = camera.Position;
 
     // Get keyboard state
     if (glfwGetKey(glfwGetCurrentContext(), GLFW_KEY_W) == GLFW_PRESS) {
+        // Move forward (only on XZ plane for Wolfenstein-style movement)
         glm::vec3 front = camera.Front;
         front.y = 0.0f; // Restrict to XZ plane
-        moveDir += glm::normalize(front);
+        front = glm::normalize(front);
+        newPosition += front * speed;
     }
     if (glfwGetKey(glfwGetCurrentContext(), GLFW_KEY_S) == GLFW_PRESS) {
+        // Move backward (only on XZ plane)
         glm::vec3 front = camera.Front;
         front.y = 0.0f; // Restrict to XZ plane
-        moveDir -= glm::normalize(front);
+        front = glm::normalize(front);
+        newPosition -= front * speed;
     }
     if (glfwGetKey(glfwGetCurrentContext(), GLFW_KEY_A) == GLFW_PRESS) {
+        // Strafe left
         glm::vec3 right = camera.Right;
         right.y = 0.0f; // Restrict to XZ plane
-        moveDir -= glm::normalize(right);
+        right = glm::normalize(right);
+        newPosition -= right * speed;
     }
     if (glfwGetKey(glfwGetCurrentContext(), GLFW_KEY_D) == GLFW_PRESS) {
+        // Strafe right
         glm::vec3 right = camera.Right;
         right.y = 0.0f; // Restrict to XZ plane
-        moveDir += glm::normalize(right);
+        right = glm::normalize(right);
+        newPosition += right * speed;
     }
 
-    // If we're not moving, return early
-    if (glm::length(moveDir) < 0.0001f) {
-        return;
+    // Check collision first on X axis
+    glm::vec3 testPos = camera.Position;
+    testPos.x = newPosition.x;
+    if (!checkCollision(testPos, map, playerWidth)) {
+        camera.Position.x = newPosition.x;
     }
 
-    // Normalize to get direction
-    moveDir = glm::normalize(moveDir);
-
-    // Get total distance to move
-    float totalDistance = playerSpeed * deltaTime;
-
-    // Break the movement into very small steps
-    const int NUM_STEPS = 20;
-    float stepSize = totalDistance / NUM_STEPS;
-
-    // Move step by step
-    for (int step = 0; step < NUM_STEPS; step++) {
-        // Calculate next position
-        glm::vec3 nextPos = camera.Position + moveDir * stepSize;
-
-        // Check collision at that position
-        if (!collideWithMap(nextPos, map, playerWidth)) {
-            // If no collision, move there
-            camera.Position = nextPos;
-        } else {
-            // If collision detected, try to slide along the walls
-
-            // Try X-movement only
-            glm::vec3 xNext = camera.Position;
-            xNext.x += moveDir.x * stepSize;
-
-            if (!collideWithMap(xNext, map, playerWidth)) {
-                camera.Position = xNext;
-            }
-
-            // Try Z-movement only
-            glm::vec3 zNext = camera.Position;
-            zNext.z += moveDir.z * stepSize;
-
-            if (!collideWithMap(zNext, map, playerWidth)) {
-                camera.Position = zNext;
-            }
-
-            // If we can't move in either direction, we're stuck
-            break;
-        }
+    // Then check collision on Z axis separately
+    testPos = camera.Position;
+    testPos.z = newPosition.z;
+    if (!checkCollision(testPos, map, playerWidth)) {
+        camera.Position.z = newPosition.z;
     }
-}
-
-// Backup code for rendering a debug circle around the player (visualization aid)
-void renderDebugCircle(Shader& shader, const Camera& camera, float radius) {
-    // Define a circle in world space
-    const int numSegments = 32;
-    std::vector<glm::vec3> circlePoints;
-
-    for (int i = 0; i < numSegments; i++) {
-        float angle = 2.0f * M_PI * i / numSegments;
-        float x = camera.Position.x + radius * cos(angle);
-        float z = camera.Position.z + radius * sin(angle);
-        circlePoints.push_back(glm::vec3(x, camera.Position.y, z));
-
-        angle = 2.0f * M_PI * (i + 1) / numSegments;
-        x = camera.Position.x + radius * cos(angle);
-        z = camera.Position.z + radius * sin(angle);
-        circlePoints.push_back(glm::vec3(x, camera.Position.y, z));
-    }
-
-    // Create and setup VBO, VAO
-    unsigned int VAO, VBO;
-    glGenVertexArrays(1, &VAO);
-    glGenBuffers(1, &VBO);
-
-    glBindVertexArray(VAO);
-
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, circlePoints.size() * sizeof(glm::vec3), &circlePoints[0], GL_STATIC_DRAW);
-
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
-    glEnableVertexAttribArray(0);
-
-    // Render the circle
-    glm::mat4 model = glm::mat4(1.0f);
-    shader.setMat4("model", model);
-    shader.setVec3("objectColor", glm::vec3(1.0f, 0.0f, 0.0f)); // Red circle
-
-    glBindVertexArray(VAO);
-    glDrawArrays(GL_LINES, 0, circlePoints.size());
-
-    // Cleanup
-    glDeleteVertexArrays(1, &VAO);
-    glDeleteBuffers(1, &VBO);
 }
 
 // Mouse callback for camera rotation
@@ -887,9 +654,6 @@ glEnable(GL_DEPTH_TEST);
         shader.setMat4("model", ceilingModel);
         shader.setVec3("objectColor", glm::vec3(0.5f, 0.5f, 0.6f)); // Light blue-gray ceiling
         cubeModel.render();
-
-         // *** UNCOMMENT TO SEE line to render the debug circle
-        //renderDebugCircle(shader, camera, playerWidth * 1.6f); // Using the same safety radius as in collideWithMap
 
         // Swap buffers and poll IO events
         glfwSwapBuffers(window);
