@@ -1,5 +1,4 @@
-#define _USE_MATH_DEFINES
-#include <cmath>
+
 // Rest of your includes and code
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
@@ -491,45 +490,15 @@ private:
 };
 
 // Utility function to load texture
-unsigned int TextureFromFile(const char *path, const std::string &directory, bool gamma) {
+unsigned int TextureFromFile(const char *path, const std::string &directory, bool gamma = false) {
     std::string filename = std::string(path);
+    filename = directory + '/' + filename;
 
-    // List of places to look for the texture
-    std::vector<std::string> possiblePaths;
-
-    // 1. Exact path from the model
-    possiblePaths.push_back(directory + '/' + filename);
-
-    // 2. Just the filename in the same directory (in case the path in FBX has subdirectories)
-    possiblePaths.push_back(directory + '/' + filename.substr(filename.find_last_of("/\\") + 1));
-
-    // 3. In a textures subdirectory
-    possiblePaths.push_back(directory + "/textures/" + filename);
-    possiblePaths.push_back(directory + "/textures/" + filename.substr(filename.find_last_of("/\\") + 1));
-
-    // 4. In a sibling textures directory
-    std::string parentDir = directory.substr(0, directory.find_last_of("/\\"));
-    possiblePaths.push_back(parentDir + "/textures/" + filename);
-    possiblePaths.push_back(parentDir + "/textures/" + filename.substr(filename.find_last_of("/\\") + 1));
-
-    // Create texture ID
     unsigned int textureID;
     glGenTextures(1, &textureID);
 
-    // Try each possible path
-    unsigned char *data = nullptr;
-    std::string successPath;
     int width, height, nrComponents;
-
-    for (const auto& tryPath : possiblePaths) {
-        data = stbi_load(tryPath.c_str(), &width, &height, &nrComponents, 0);
-        if (data) {
-            successPath = tryPath;
-            break;
-        }
-    }
-
-    // If we found a texture, load it
+    unsigned char *data = stbi_load(filename.c_str(), &width, &height, &nrComponents, 0);
     if (data) {
         GLenum format;
         if (nrComponents == 1)
@@ -548,15 +517,11 @@ unsigned int TextureFromFile(const char *path, const std::string &directory, boo
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-        std::cout << "Loaded texture: " << successPath << std::endl;
         stbi_image_free(data);
     }
     else {
         std::cout << "Texture failed to load at path: " << path << std::endl;
-        std::cout << "Tried paths:" << std::endl;
-        for (const auto& tryPath : possiblePaths) {
-            std::cout << "  " << tryPath << std::endl;
-        }
+        stbi_image_free(data);
     }
 
     return textureID;
@@ -586,14 +551,13 @@ private:
     std::string directory;
 
     // Model loading function
-         void loadModel(std::string path) {
-            Assimp::Importer importer;
-            const aiScene* scene = importer.ReadFile(path,
-                aiProcess_Triangulate |
-                aiProcess_GenSmoothNormals |
-                aiProcess_FlipUVs |
-                aiProcess_CalcTangentSpace     // Important for normal maps
-            );
+    void loadModel(std::string path) {
+        Assimp::Importer importer;
+        const aiScene* scene = importer.ReadFile(path,
+            aiProcess_Triangulate |
+            aiProcess_GenSmoothNormals |
+            aiProcess_FlipUVs
+        );
 
         // Check for errors
         if(!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
@@ -664,39 +628,14 @@ private:
         }
 
         // Process material
-    // In your processMesh function:
-                if(mesh->mMaterialIndex >= 0) {
-                    aiMaterial *material = scene->mMaterials[mesh->mMaterialIndex];
-
-                       // Debug material properties
-    aiString name;
-    if(material->Get(AI_MATKEY_NAME, name) == AI_SUCCESS) {
-        std::cout << "Material name: " << name.C_Str() << std::endl;
-    }
-
-    // Check if material has color properties
-    aiColor4D diffuse;
-    if(material->Get(AI_MATKEY_COLOR_DIFFUSE, diffuse) == AI_SUCCESS) {
-        std::cout << "Diffuse color: " << diffuse.r << ", " << diffuse.g << ", "
-                  << diffuse.b << ", " << diffuse.a << std::endl;
-    }
-
-
-                    // Try multiple texture types
-                    std::vector<Texture> diffuseMaps = loadMaterialTextures(material,
-                        aiTextureType_DIFFUSE, "texture_diffuse");
-                    textures.insert(textures.end(), diffuseMaps.begin(), diffuseMaps.end());
-
-                    // Try PBR base color (might be used instead of diffuse)
-                    std::vector<Texture> baseColorMaps = loadMaterialTextures(material,
-                        aiTextureType_BASE_COLOR, "texture_diffuse");
-                    textures.insert(textures.end(), baseColorMaps.begin(), baseColorMaps.end());
-
-                    // Try other types if needed
-                    std::vector<Texture> specularMaps = loadMaterialTextures(material,
-                        aiTextureType_SPECULAR, "texture_specular");
-                    textures.insert(textures.end(), specularMaps.begin(), specularMaps.end());
-                }
+        if(mesh->mMaterialIndex >= 0) {
+            aiMaterial *material = scene->mMaterials[mesh->mMaterialIndex];
+            // We assume a convention for sampler names in the shaders. Each diffuse texture should be named
+            // as 'texture_diffuseN' where N is a sequential number ranging from 1 to MAX_SAMPLER_NUMBER.
+            std::vector<Texture> diffuseMaps = loadMaterialTextures(material,
+                aiTextureType_DIFFUSE, "texture_diffuse");
+            textures.insert(textures.end(), diffuseMaps.begin(), diffuseMaps.end());
+        }
 
         return Mesh(vertices, indices, textures);
     }
@@ -704,17 +643,10 @@ private:
     // Texture loading
     std::vector<Texture> loadMaterialTextures(aiMaterial *mat, aiTextureType type, std::string typeName) {
         std::vector<Texture> textures;
-         std::cout << "Looking for textures of type: " << typeName << ", count: " << mat->GetTextureCount(type) << std::endl;
-           // Try all common texture types if no textures found
-    if (mat->GetTextureCount(type) == 0 && type == aiTextureType_DIFFUSE) {
-        // Try PBR base color (glTF uses this)
-        return loadMaterialTextures(mat, aiTextureType_BASE_COLOR, typeName);
-    }
-
         for(unsigned int i = 0; i < mat->GetTextureCount(type); i++) {
             aiString str;
             mat->GetTexture(type, i, &str);
-        std::cout << "Texture path from model: " << str.C_Str() << std::endl;
+
             // Check if texture was loaded before
             bool skip = false;
             for(unsigned int j = 0; j < textures_loaded.size(); j++) {
@@ -726,7 +658,7 @@ private:
             }
             if(!skip) {   // If texture hasn't been loaded already, load it
                 Texture texture;
-               texture.id = TextureFromFile(str.C_Str(), directory, false);
+                texture.id = TextureFromFile(str.C_Str(), directory);
                 texture.type = typeName;
                 texture.path = str.C_Str();
                 textures.push_back(texture);
@@ -1446,8 +1378,6 @@ void createShaderFiles() {
         fShader << "uniform sampler2D normalMap;\n";
         fShader << "uniform bool useTexture;\n";
         fShader << "uniform bool useNormalMap;\n\n";
-        fShader << "uniform sampler2D texture_diffuse1;\n";
-        fShader << "uniform int textureType;\n";  // Add this line
 
         fShader << "void main()\n";
         fShader << "{\n";
@@ -1470,18 +1400,12 @@ void createShaderFiles() {
         fShader << "    float diff = max(dot(norm, lightDir), 0.0);\n";
         fShader << "    vec3 diffuse = diff * lightColor;\n\n";
 
-         // In the fragment shader creation part:
         fShader << "    // Result\n";
         fShader << "    vec3 result;\n";
         fShader << "    if (useTexture) {\n";
-        fShader << "        vec3 texColor;\n";
-        fShader << "        if (textureType == 1) {\n";  // Model texture
-        fShader << "            texColor = texture(texture_diffuse1, TexCoord).rgb;\n";
-        fShader << "        } else {\n";  // Wall texture
-        fShader << "            texColor = texture(wallTexture, TexCoord).rgb;\n";
-        fShader << "        }\n";
+        fShader << "        vec3 texColor = texture(wallTexture, TexCoord).rgb;\n";
         fShader << "        result = (ambient + diffuse) * texColor;\n";
-        fShader << "    } else {\n";  // This else clause was missing
+        fShader << "    } else {\n";
         fShader << "        result = (ambient + diffuse) * objectColor;\n";
         fShader << "    }\n\n";
 
@@ -1570,7 +1494,7 @@ glEnable(GL_DEPTH_TEST);
     CubeModel cubeModel;
 
     //Models
-    Model cakeModel("C:/Programs/SDL3_projects/GateWay3D/GateWay3D/Models/Cake/scene.gltf");
+    Model cakeModel("C:/Programs/SDL3_projects/GateWay3D/GateWay3D/Models/Cake/source/cake.fbx");
 
     // Main loop
     while (!glfwWindowShouldClose(window)) {
@@ -1656,28 +1580,15 @@ glEnable(GL_DEPTH_TEST);
         cubeModel.render();
 
         // Render cake model
-        // In your main rendering loop, where you render the cake:
-                glm::mat4 cakeModelMatrix = glm::mat4(1.0f);
-
-                // Change these values to move the cake to a different position
-                float posX = 5.0f;  // X position (specific cell in your map)
-                float posY = 0.5f;  // Y position (height above floor)
-                float posZ = 7.0f;  // Z position (specific cell in your map)
-
-                cakeModelMatrix = glm::translate(cakeModelMatrix, glm::vec3(posX, posY, posZ));
-
-                // You can also adjust rotation if desired
-                float rotationAngle = glm::radians(45.0f);  // 45 degrees rotation around Y axis
-                cakeModelMatrix = glm::rotate(cakeModelMatrix, rotationAngle, glm::vec3(0.0f, 1.0f, 0.0f));
-
-                // Keep your existing scale
-                cakeModelMatrix = glm::scale(cakeModelMatrix, glm::vec3(0.1f, 0.1f, 0.1f));
-
-                shader.setMat4("model", cakeModelMatrix);
-                // Before drawing the cake:
-                shader.setBool("useTexture", true);
-                shader.setInt("textureType", 1);  // Signal it's a model texture
-                cakeModel.Draw(shader);
+            glm::mat4 cakeModelMatrix = glm::mat4(1.0f);
+            cakeModelMatrix = glm::translate(cakeModelMatrix, glm::vec3(
+                map.width * CELL_SIZE * 0.5f,  // X center of map
+                0.0f,                          // On the floor
+                map.height * CELL_SIZE * 0.5f  // Z center of map
+            ));
+            cakeModelMatrix = glm::scale(cakeModelMatrix, glm::vec3(0.1f, 0.1f, 0.1f)); // Adjust scale as needed
+            shader.setMat4("model", cakeModelMatrix);
+            cakeModel.Draw(shader);
 
         // UNCOMMENT TO SEE line to grid being rendered to the game world
                 if (showGrid) {

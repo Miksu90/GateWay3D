@@ -1,6 +1,3 @@
-#define _USE_MATH_DEFINES
-#include <cmath>
-// Rest of your includes and code
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
@@ -15,15 +12,9 @@
 #include <map>
 #include <set>
 #include <string>
-#include <cstdlib>
-//Image loading
+
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
-//Model loading
-#include <assimp/Importer.hpp>
-#include <assimp/scene.h>
-#include <assimp/postprocess.h>
-
 
 // Window dimensions
 const unsigned int SCREEN_WIDTH = 800;
@@ -44,7 +35,7 @@ float lastFrame = 0.0f;
 
 // Player settings
 float playerHeight = 1.0f;
-float playerWidth = 0.25f;  // For collision detection
+float playerWidth = 0.3f;  // For collision detection
 float playerSpeed = 2.5f;
 bool playerOnGround = true;
 
@@ -53,7 +44,6 @@ const float CELL_SIZE = 1.0f;
 const float WALL_HEIGHT = 2.0f;
 
 bool useNormalMaps = true;  // Start with normal maps enabled
-bool showGrid = false;  // Show grid or not
 
 // Shader class to handle shaders
 class Shader {
@@ -212,55 +202,46 @@ public:
         loadFromFile(filename);
     }
 
-   void loadFromFile(const std::string& filename) {
-    std::ifstream file(filename);
-    if (!file.is_open()) {
-        std::cerr << "Failed to open map file: " << filename << std::endl;
-        return;
-    }
+    void loadFromFile(const std::string& filename) {
+        std::ifstream file(filename);
+        if (!file.is_open()) {
+            std::cerr << "Failed to open map file: " << filename << std::endl;
+            return;
+        }
 
-    std::string line;
-    height = 0;
-    width = 0;
+        std::string line;
+        height = 0;
+        width = 0;
 
-    grid.clear();
-    textureIDs.clear();
+        grid.clear();
+        textureIDs.clear();
 
-    while (std::getline(file, line)) {
-        std::vector<int> row;
-        std::vector<int> texRow;
-        for (char c : line) {
-            if (c == '#') {
-                row.push_back(1);  // Wall
-                texRow.push_back(0);  // Default texture ID
-            } else if (c >= '1' && c <= '9') {
-                row.push_back(1);  // Wall
-                texRow.push_back(c - '0');  // Texture ID from 1-9
-            } else if (c == '.') {
-                row.push_back(0);  // Empty space
-                texRow.push_back(0);  // No texture
-            } else {
-                row.push_back(0);  // Default to empty
-                texRow.push_back(0);  // No texture
+        while (std::getline(file, line)) {
+            std::vector<int> row;
+            std::vector<int> texRow;
+            for (char c : line) {
+                if (c == '#') {
+                    row.push_back(1);  // Wall
+                    texRow.push_back(0);  // Default texture ID
+                } else if (c >= '1' && c <= '9') {
+                    row.push_back(1);  // Wall
+                    texRow.push_back(c - '0');  // Texture ID from 1-9
+                } else if (c == '.') {
+                    row.push_back(0);  // Empty space
+                    texRow.push_back(0);  // No texture
+                } else {
+                    row.push_back(0);  // Default to empty
+                    texRow.push_back(0);  // No texture
+                }
             }
+            if (row.size() > width) {
+                width = row.size();
+            }
+            grid.push_back(row);
+            textureIDs.push_back(texRow);
+            height++;
         }
-        if (row.size() > width) {
-            width = row.size();
-        }
-        grid.push_back(row);
-        textureIDs.push_back(texRow);
-        height++;
     }
-
-    // Debug print the entire map grid
-    std::cout << "Map Grid (Width: " << width << ", Height: " << height << "):" << std::endl;
-    for (int z = 0; z < height; z++) {
-        for (int x = 0; x < width; x++) {
-            std::cout << grid[z][x] << " ";
-        }
-        std::cout << std::endl;
-    }
-}
 
     // Get texture ID for a specific wall
     int getTextureID(int x, int z) const {
@@ -383,357 +364,6 @@ public:
     ~CubeModel() {
         glDeleteVertexArrays(1, &VAO);
         glDeleteBuffers(1, &VBO);
-    }
-};
-// Vertex structure for 3D models
-struct Vertex {
-    glm::vec3 Position;
-    glm::vec3 Normal;
-    glm::vec2 TexCoords;
-};
-
-// Texture structure for model textures
-struct Texture {
-    unsigned int id;
-    std::string type;
-    std::string path;
-};
-
-// Mesh class to handle individual meshes in a model
-class Mesh {
-public:
-    // Mesh Data
-    std::vector<Vertex> vertices;
-    std::vector<unsigned int> indices;
-    std::vector<Texture> textures;
-
-    // Constructor
-    Mesh(std::vector<Vertex> vertices, std::vector<unsigned int> indices, std::vector<Texture> textures) {
-        this->vertices = vertices;
-        this->indices = indices;
-        this->textures = textures;
-
-        // Now set up mesh and buffer objects
-        setupMesh();
-    }
-
-    // Render the mesh
-    void Draw(Shader &shader) {
-        // Bind appropriate textures
-        unsigned int diffuseNr = 1;
-        unsigned int specularNr = 1;
-        unsigned int normalNr = 1;
-        unsigned int heightNr = 1;
-
-        for(unsigned int i = 0; i < textures.size(); i++) {
-            glActiveTexture(GL_TEXTURE0 + i); // Active proper texture unit before binding
-            // Retrieve texture number (the N in diffuse_textureN)
-            std::string number;
-            std::string name = textures[i].type;
-            if(name == "texture_diffuse")
-                number = std::to_string(diffuseNr++);
-            else if(name == "texture_specular")
-                number = std::to_string(specularNr++);
-            else if(name == "texture_normal")
-                number = std::to_string(normalNr++);
-            else if(name == "texture_height")
-                number = std::to_string(heightNr++);
-
-            // Set the sampler to the correct texture unit
-            shader.setInt((name + number).c_str(), i);
-            // Bind the texture
-            glBindTexture(GL_TEXTURE_2D, textures[i].id);
-        }
-
-        // Draw mesh
-        glBindVertexArray(VAO);
-        glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0);
-        glBindVertexArray(0);
-
-        // Reset to default texture unit
-        glActiveTexture(GL_TEXTURE0);
-    }
-
-private:
-    // Render data
-    unsigned int VAO, VBO, EBO;
-
-    // Initializes all the buffer objects/arrays
-    void setupMesh() {
-        // Create buffers/arrays
-        glGenVertexArrays(1, &VAO);
-        glGenBuffers(1, &VBO);
-        glGenBuffers(1, &EBO);
-
-        // Load data into vertex buffers
-        glBindVertexArray(VAO);
-        // Load vertex buffer
-        glBindBuffer(GL_ARRAY_BUFFER, VBO);
-        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex), &vertices[0], GL_STATIC_DRAW);
-
-        // Load index buffer
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STATIC_DRAW);
-
-        // Set the vertex attribute pointers
-        // Vertex Positions
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
-        // Vertex Normals
-        glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Normal));
-        // Vertex Texture Coords
-        glEnableVertexAttribArray(2);
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, TexCoords));
-
-        glBindVertexArray(0);
-    }
-};
-
-// Utility function to load texture
-unsigned int TextureFromFile(const char *path, const std::string &directory, bool gamma) {
-    std::string filename = std::string(path);
-
-    // List of places to look for the texture
-    std::vector<std::string> possiblePaths;
-
-    // 1. Exact path from the model
-    possiblePaths.push_back(directory + '/' + filename);
-
-    // 2. Just the filename in the same directory (in case the path in FBX has subdirectories)
-    possiblePaths.push_back(directory + '/' + filename.substr(filename.find_last_of("/\\") + 1));
-
-    // 3. In a textures subdirectory
-    possiblePaths.push_back(directory + "/textures/" + filename);
-    possiblePaths.push_back(directory + "/textures/" + filename.substr(filename.find_last_of("/\\") + 1));
-
-    // 4. In a sibling textures directory
-    std::string parentDir = directory.substr(0, directory.find_last_of("/\\"));
-    possiblePaths.push_back(parentDir + "/textures/" + filename);
-    possiblePaths.push_back(parentDir + "/textures/" + filename.substr(filename.find_last_of("/\\") + 1));
-
-    // Create texture ID
-    unsigned int textureID;
-    glGenTextures(1, &textureID);
-
-    // Try each possible path
-    unsigned char *data = nullptr;
-    std::string successPath;
-    int width, height, nrComponents;
-
-    for (const auto& tryPath : possiblePaths) {
-        data = stbi_load(tryPath.c_str(), &width, &height, &nrComponents, 0);
-        if (data) {
-            successPath = tryPath;
-            break;
-        }
-    }
-
-    // If we found a texture, load it
-    if (data) {
-        GLenum format;
-        if (nrComponents == 1)
-            format = GL_RED;
-        else if (nrComponents == 3)
-            format = GL_RGB;
-        else if (nrComponents == 4)
-            format = GL_RGBA;
-
-        glBindTexture(GL_TEXTURE_2D, textureID);
-        glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
-        glGenerateMipmap(GL_TEXTURE_2D);
-
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-        std::cout << "Loaded texture: " << successPath << std::endl;
-        stbi_image_free(data);
-    }
-    else {
-        std::cout << "Texture failed to load at path: " << path << std::endl;
-        std::cout << "Tried paths:" << std::endl;
-        for (const auto& tryPath : possiblePaths) {
-            std::cout << "  " << tryPath << std::endl;
-        }
-    }
-
-    return textureID;
-}
-
-// Global vector to store loaded textures
-std::vector<Texture> textures_loaded;
-
-
-class Model {
-public:
-    // Load model from file
-    Model(const char* path) {
-        loadModel(path);
-    }
-
-    // Render the model
-    void Draw(Shader &shader) {
-        for(unsigned int i = 0; i < meshes.size(); i++) {
-            meshes[i].Draw(shader);
-        }
-    }
-
-private:
-    // Model data
-    std::vector<Mesh> meshes;
-    std::string directory;
-
-    // Model loading function
-         void loadModel(std::string path) {
-            Assimp::Importer importer;
-            const aiScene* scene = importer.ReadFile(path,
-                aiProcess_Triangulate |
-                aiProcess_GenSmoothNormals |
-                aiProcess_FlipUVs |
-                aiProcess_CalcTangentSpace     // Important for normal maps
-            );
-
-        // Check for errors
-        if(!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
-            std::cout << "ERROR::ASSIMP::" << importer.GetErrorString() << std::endl;
-            return;
-        }
-
-        // Retrieve the directory path of the filepath
-        directory = path.substr(0, path.find_last_of('/'));
-
-        // Process ASSIMP's root node recursively
-        processNode(scene->mRootNode, scene);
-    }
-
-    // Recursive node processing
-    void processNode(aiNode *node, const aiScene *scene) {
-        // Process each mesh located at the current node
-        for(unsigned int i = 0; i < node->mNumMeshes; i++) {
-            // The node object only contains indices to index the actual objects in the scene.
-            // The scene contains all the data, node is just to organize the data.
-            aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-            meshes.push_back(processMesh(mesh, scene));
-        }
-        // After processing all of the meshes, recursively process each of the children nodes
-        for(unsigned int i = 0; i < node->mNumChildren; i++) {
-            processNode(node->mChildren[i], scene);
-        }
-    }
-
-    // Mesh processing
-    Mesh processMesh(aiMesh *mesh, const aiScene *scene) {
-        // Data to fill
-        std::vector<Vertex> vertices;
-        std::vector<unsigned int> indices;
-        std::vector<Texture> textures;
-
-        // Walk through each of the mesh's vertices
-        for(unsigned int i = 0; i < mesh->mNumVertices; i++) {
-            Vertex vertex;
-            // Positions
-            vertex.Position = glm::vec3(
-                mesh->mVertices[i].x,
-                mesh->mVertices[i].y,
-                mesh->mVertices[i].z
-            );
-            // Normals
-            vertex.Normal = glm::vec3(
-                mesh->mNormals[i].x,
-                mesh->mNormals[i].y,
-                mesh->mNormals[i].z
-            );
-            // Texture Coordinates (if available)
-            if(mesh->mTextureCoords[0]) {
-                glm::vec2 vec;
-                vec.x = mesh->mTextureCoords[0][i].x;
-                vec.y = mesh->mTextureCoords[0][i].y;
-                vertex.TexCoords = vec;
-            } else {
-                vertex.TexCoords = glm::vec2(0.0f, 0.0f);
-            }
-            vertices.push_back(vertex);
-        }
-        // Process indices
-        for(unsigned int i = 0; i < mesh->mNumFaces; i++) {
-            aiFace face = mesh->mFaces[i];
-            for(unsigned int j = 0; j < face.mNumIndices; j++)
-                indices.push_back(face.mIndices[j]);
-        }
-
-        // Process material
-    // In your processMesh function:
-                if(mesh->mMaterialIndex >= 0) {
-                    aiMaterial *material = scene->mMaterials[mesh->mMaterialIndex];
-
-                       // Debug material properties
-    aiString name;
-    if(material->Get(AI_MATKEY_NAME, name) == AI_SUCCESS) {
-        std::cout << "Material name: " << name.C_Str() << std::endl;
-    }
-
-    // Check if material has color properties
-    aiColor4D diffuse;
-    if(material->Get(AI_MATKEY_COLOR_DIFFUSE, diffuse) == AI_SUCCESS) {
-        std::cout << "Diffuse color: " << diffuse.r << ", " << diffuse.g << ", "
-                  << diffuse.b << ", " << diffuse.a << std::endl;
-    }
-
-
-                    // Try multiple texture types
-                    std::vector<Texture> diffuseMaps = loadMaterialTextures(material,
-                        aiTextureType_DIFFUSE, "texture_diffuse");
-                    textures.insert(textures.end(), diffuseMaps.begin(), diffuseMaps.end());
-
-                    // Try PBR base color (might be used instead of diffuse)
-                    std::vector<Texture> baseColorMaps = loadMaterialTextures(material,
-                        aiTextureType_BASE_COLOR, "texture_diffuse");
-                    textures.insert(textures.end(), baseColorMaps.begin(), baseColorMaps.end());
-
-                    // Try other types if needed
-                    std::vector<Texture> specularMaps = loadMaterialTextures(material,
-                        aiTextureType_SPECULAR, "texture_specular");
-                    textures.insert(textures.end(), specularMaps.begin(), specularMaps.end());
-                }
-
-        return Mesh(vertices, indices, textures);
-    }
-
-    // Texture loading
-    std::vector<Texture> loadMaterialTextures(aiMaterial *mat, aiTextureType type, std::string typeName) {
-        std::vector<Texture> textures;
-         std::cout << "Looking for textures of type: " << typeName << ", count: " << mat->GetTextureCount(type) << std::endl;
-           // Try all common texture types if no textures found
-    if (mat->GetTextureCount(type) == 0 && type == aiTextureType_DIFFUSE) {
-        // Try PBR base color (glTF uses this)
-        return loadMaterialTextures(mat, aiTextureType_BASE_COLOR, typeName);
-    }
-
-        for(unsigned int i = 0; i < mat->GetTextureCount(type); i++) {
-            aiString str;
-            mat->GetTexture(type, i, &str);
-        std::cout << "Texture path from model: " << str.C_Str() << std::endl;
-            // Check if texture was loaded before
-            bool skip = false;
-            for(unsigned int j = 0; j < textures_loaded.size(); j++) {
-                if(std::strcmp(textures_loaded[j].path.data(), str.C_Str()) == 0) {
-                    textures.push_back(textures_loaded[j]);
-                    skip = true;
-                    break;
-                }
-            }
-            if(!skip) {   // If texture hasn't been loaded already, load it
-                Texture texture;
-               texture.id = TextureFromFile(str.C_Str(), directory, false);
-                texture.type = typeName;
-                texture.path = str.C_Str();
-                textures.push_back(texture);
-                textures_loaded.push_back(texture);
-            }
-        }
-        return textures;
     }
 };
 
@@ -867,7 +497,7 @@ public:
             glBindTexture(GL_TEXTURE_2D, textures[textureID]);
         } else {
             // Bind a default texture or do nothing
-            //std::cout << "No color texture found for ID: " << textureID << std::endl;
+            std::cout << "No color texture found for ID: " << textureID << std::endl;
         }
 
         // Bind the normal map to texture unit 1 if available
@@ -1069,63 +699,29 @@ bool checkCollisionCircle(const glm::vec3& position, const Map& map, float radiu
     return false;
 }
 
+// Very simple but extremely robust collision check
 bool collideWithMap(const glm::vec3& position, const Map& map, float radius) {
-    // Convert world coordinates to grid coordinates
-    int gridX = static_cast<int>(position.x / CELL_SIZE);
-    int gridZ = static_cast<int>(position.z / CELL_SIZE);
+    // Use a slightly larger radius for extra safety
+    float safetyRadius = radius * 1.6f;
 
-    // Bounds checking
-    if (gridX < 0 || gridX >= map.width || gridZ < 0 || gridZ >= map.height) {
-        return true; // Out of bounds is a collision
-    }
+    // Check a high-density grid of points around the player
+    const int NUM_SAMPLES = 16;
+    for (int i = 0; i < NUM_SAMPLES; i++) {
+        float angle = (float)i / NUM_SAMPLES * 2.0f * M_PI;
+        float checkX = position.x + safetyRadius * cos(angle);
+        float checkZ = position.z + safetyRadius * sin(angle);
 
-    // Check surrounding cells for potential collisions
-    const int checkRadius = static_cast<int>(std::ceil(radius / CELL_SIZE)) + 1;
-
-    for (int dz = -checkRadius; dz <= checkRadius; dz++) {
-        for (int dx = -checkRadius; dx <= checkRadius; dx++) {
-            int checkX = gridX + dx;
-            int checkZ = gridZ + dz;
-
-            // Skip out-of-bounds cells
-            if (checkX < 0 || checkX >= map.width || checkZ < 0 || checkZ >= map.height) {
-                continue;
-            }
-
-            // If it's a wall cell, do precise boundary check
-            if (map.grid[checkZ][checkX] == 1) {
-                float cellMinX = checkX * CELL_SIZE;
-                float cellMaxX = cellMinX + CELL_SIZE;
-                float cellMinZ = checkZ * CELL_SIZE;
-                float cellMaxZ = cellMinZ + CELL_SIZE;
-
-                // Precise point-box collision check
-                bool collideX = position.x + radius > cellMinX && position.x - radius < cellMaxX;
-                bool collideZ = position.z + radius > cellMinZ && position.z - radius < cellMaxZ;
-
-                if (collideX && collideZ) {
-                    return true;
-                }
-            }
+        if (map.isWall(checkX, checkZ)) {
+            return true;
         }
     }
 
     return false;
 }
+
 // Process movement with very small steps to prevent any chance of corner penetration
 void processMovement(Camera& camera, const Map& map, float deltaTime) {
-    // Debug print for precise positioning
-    int gridX = static_cast<int>(camera.Position.x / CELL_SIZE);
-    int gridZ = static_cast<int>(camera.Position.z / CELL_SIZE);
-
-    float cellMinX = gridX * CELL_SIZE;
-    float cellMaxX = cellMinX + CELL_SIZE;
-    float cellMinZ = gridZ * CELL_SIZE;
-    float cellMaxZ = cellMinZ + CELL_SIZE;
-
-
-
-    // Rest of the existing movement code...
+    // Calculate movement vector based on input
     glm::vec3 moveDir(0.0f);
 
     // Get keyboard state
@@ -1162,20 +758,38 @@ void processMovement(Camera& camera, const Map& map, float deltaTime) {
     float totalDistance = playerSpeed * deltaTime;
 
     // Break the movement into very small steps
-    const int NUM_STEPS = 30;
+    const int NUM_STEPS = 20;
     float stepSize = totalDistance / NUM_STEPS;
 
-    // Move step by step with progressive collision checking
+    // Move step by step
     for (int step = 0; step < NUM_STEPS; step++) {
         // Calculate next position
         glm::vec3 nextPos = camera.Position + moveDir * stepSize;
 
-        // Extremely conservative collision check
+        // Check collision at that position
         if (!collideWithMap(nextPos, map, playerWidth)) {
             // If no collision, move there
             camera.Position = nextPos;
         } else {
-            // If collision detected, minimize movement
+            // If collision detected, try to slide along the walls
+
+            // Try X-movement only
+            glm::vec3 xNext = camera.Position;
+            xNext.x += moveDir.x * stepSize;
+
+            if (!collideWithMap(xNext, map, playerWidth)) {
+                camera.Position = xNext;
+            }
+
+            // Try Z-movement only
+            glm::vec3 zNext = camera.Position;
+            zNext.z += moveDir.z * stepSize;
+
+            if (!collideWithMap(zNext, map, playerWidth)) {
+                camera.Position = zNext;
+            }
+
+            // If we can't move in either direction, we're stuck
             break;
         }
     }
@@ -1281,76 +895,7 @@ void processInput(GLFWwindow* window) {
     } else {
         nKeyPressed = false;
     }
-       // Add the G key toggle for grid
-    static bool gKeyPressed = false;
-    if (glfwGetKey(window, GLFW_KEY_G) == GLFW_PRESS) {
-        if (!gKeyPressed) {
-            showGrid = !showGrid;
-            std::cout << "Grid " << (showGrid ? "enabled" : "disabled") << std::endl;
-            gKeyPressed = true;
-        }
-    } else {
-        gKeyPressed = false;
-    }
 }
-
-void renderGrid(Shader& shader, const Map& map) {
-    // Vertex data for grid lines
-    std::vector<glm::vec3> gridLines;
-
-    // Slightly lift the grid above the floor to prevent z-fighting
-    float gridHeight = 0.01f;
-
-    // Horizontal lines
-    for (int z = 0; z <= map.height; z++) {
-        gridLines.push_back(glm::vec3(0.0f, gridHeight, z * CELL_SIZE));
-        gridLines.push_back(glm::vec3(map.width * CELL_SIZE, gridHeight, z * CELL_SIZE));
-    }
-
-    // Vertical lines
-    for (int x = 0; x <= map.width; x++) {
-        gridLines.push_back(glm::vec3(x * CELL_SIZE, gridHeight, 0.0f));
-        gridLines.push_back(glm::vec3(x * CELL_SIZE, gridHeight, map.height * CELL_SIZE));
-    }
-
-    // Create and setup VBO, VAO
-    unsigned int VAO, VBO;
-    glGenVertexArrays(1, &VAO);
-    glGenBuffers(1, &VBO);
-
-    glBindVertexArray(VAO);
-
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, gridLines.size() * sizeof(glm::vec3), gridLines.data(), GL_STATIC_DRAW);
-
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
-    glEnableVertexAttribArray(0);
-
-    // Render the grid
-    glm::mat4 model = glm::mat4(1.0f);
-    shader.setMat4("model", model);
-    shader.setVec3("objectColor", glm::vec3(0.5f, 0.5f, 0.5f)); // Lighter gray for visibility
-
-    // Temporarily disable depth testing to ensure grid is visible
-    glDisable(GL_DEPTH_TEST);
-
-    glBindVertexArray(VAO);
-    glLineWidth(1.5f); // Make lines slightly thicker
-    glDrawArrays(GL_LINES, 0, gridLines.size());
-    glLineWidth(1.0f); // Reset line width
-
-    // Re-enable depth testing
-    glEnable(GL_DEPTH_TEST);
-
-    // Cleanup
-    glDeleteVertexArrays(1, &VAO);
-    glDeleteBuffers(1, &VBO);
-}
-
-// Modify the main rendering loop to include grid rendering
-// In the main rendering section of the main() function, add:
-//renderGrid(shader, map);
-
 
 // Create a default map.txt file if it doesn't exist
 void createDefaultMapFile() {
@@ -1446,8 +991,6 @@ void createShaderFiles() {
         fShader << "uniform sampler2D normalMap;\n";
         fShader << "uniform bool useTexture;\n";
         fShader << "uniform bool useNormalMap;\n\n";
-        fShader << "uniform sampler2D texture_diffuse1;\n";
-        fShader << "uniform int textureType;\n";  // Add this line
 
         fShader << "void main()\n";
         fShader << "{\n";
@@ -1470,18 +1013,12 @@ void createShaderFiles() {
         fShader << "    float diff = max(dot(norm, lightDir), 0.0);\n";
         fShader << "    vec3 diffuse = diff * lightColor;\n\n";
 
-         // In the fragment shader creation part:
         fShader << "    // Result\n";
         fShader << "    vec3 result;\n";
         fShader << "    if (useTexture) {\n";
-        fShader << "        vec3 texColor;\n";
-        fShader << "        if (textureType == 1) {\n";  // Model texture
-        fShader << "            texColor = texture(texture_diffuse1, TexCoord).rgb;\n";
-        fShader << "        } else {\n";  // Wall texture
-        fShader << "            texColor = texture(wallTexture, TexCoord).rgb;\n";
-        fShader << "        }\n";
+        fShader << "        vec3 texColor = texture(wallTexture, TexCoord).rgb;\n";
         fShader << "        result = (ambient + diffuse) * texColor;\n";
-        fShader << "    } else {\n";  // This else clause was missing
+        fShader << "    } else {\n";
         fShader << "        result = (ambient + diffuse) * objectColor;\n";
         fShader << "    }\n\n";
 
@@ -1492,8 +1029,6 @@ void createShaderFiles() {
 }
 
 int main() {
-
-
     // Initialize GLFW
     glfwSetErrorCallback(error_callback);
     if (!glfwInit()) {
@@ -1569,9 +1104,6 @@ glEnable(GL_DEPTH_TEST);
     // Create cube model
     CubeModel cubeModel;
 
-    //Models
-    Model cakeModel("C:/Programs/SDL3_projects/GateWay3D/GateWay3D/Models/Cake/scene.gltf");
-
     // Main loop
     while (!glfwWindowShouldClose(window)) {
         // Per-frame time logic
@@ -1622,17 +1154,9 @@ glEnable(GL_DEPTH_TEST);
                     }
 
                     glm::mat4 model = glm::mat4(1.0f);
-
-       //************ THIS CAUSED THE COLLISION DETECTION TO NOT WORK, WE HAD 0,5 diffrence with the game world grid ***********
-              // Translate to the center of the grid cell, not the corner
-                    model = glm::translate(model, glm::vec3(
-                        (x + 0.5f) * CELL_SIZE,
-                        WALL_HEIGHT * 0.5f,
-                        (z + 0.5f) * CELL_SIZE
-                    ));
+                    model = glm::translate(model, glm::vec3(x * CELL_SIZE, WALL_HEIGHT * 0.5f, z * CELL_SIZE));
                     model = glm::scale(model, glm::vec3(CELL_SIZE, WALL_HEIGHT, CELL_SIZE));
                     shader.setMat4("model", model);
-
 
                     cubeModel.render();
                 }
@@ -1654,35 +1178,6 @@ glEnable(GL_DEPTH_TEST);
         shader.setMat4("model", ceilingModel);
         shader.setVec3("objectColor", glm::vec3(0.5f, 0.5f, 0.6f)); // Light blue-gray ceiling
         cubeModel.render();
-
-        // Render cake model
-        // In your main rendering loop, where you render the cake:
-                glm::mat4 cakeModelMatrix = glm::mat4(1.0f);
-
-                // Change these values to move the cake to a different position
-                float posX = 5.0f;  // X position (specific cell in your map)
-                float posY = 0.5f;  // Y position (height above floor)
-                float posZ = 7.0f;  // Z position (specific cell in your map)
-
-                cakeModelMatrix = glm::translate(cakeModelMatrix, glm::vec3(posX, posY, posZ));
-
-                // You can also adjust rotation if desired
-                float rotationAngle = glm::radians(45.0f);  // 45 degrees rotation around Y axis
-                cakeModelMatrix = glm::rotate(cakeModelMatrix, rotationAngle, glm::vec3(0.0f, 1.0f, 0.0f));
-
-                // Keep your existing scale
-                cakeModelMatrix = glm::scale(cakeModelMatrix, glm::vec3(0.1f, 0.1f, 0.1f));
-
-                shader.setMat4("model", cakeModelMatrix);
-                // Before drawing the cake:
-                shader.setBool("useTexture", true);
-                shader.setInt("textureType", 1);  // Signal it's a model texture
-                cakeModel.Draw(shader);
-
-        // UNCOMMENT TO SEE line to grid being rendered to the game world
-                if (showGrid) {
-                    renderGrid(shader, map);
-                }
 
          // *** UNCOMMENT TO SEE line to render the debug circle
         //renderDebugCircle(shader, camera, playerWidth * 1.6f); // Using the same safety radius as in collideWithMap

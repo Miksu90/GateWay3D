@@ -1,6 +1,3 @@
-#define _USE_MATH_DEFINES
-#include <cmath>
-// Rest of your includes and code
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
@@ -15,15 +12,9 @@
 #include <map>
 #include <set>
 #include <string>
-#include <cstdlib>
-//Image loading
+
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
-//Model loading
-#include <assimp/Importer.hpp>
-#include <assimp/scene.h>
-#include <assimp/postprocess.h>
-
 
 // Window dimensions
 const unsigned int SCREEN_WIDTH = 800;
@@ -53,7 +44,6 @@ const float CELL_SIZE = 1.0f;
 const float WALL_HEIGHT = 2.0f;
 
 bool useNormalMaps = true;  // Start with normal maps enabled
-bool showGrid = false;  // Show grid or not
 
 // Shader class to handle shaders
 class Shader {
@@ -383,357 +373,6 @@ public:
     ~CubeModel() {
         glDeleteVertexArrays(1, &VAO);
         glDeleteBuffers(1, &VBO);
-    }
-};
-// Vertex structure for 3D models
-struct Vertex {
-    glm::vec3 Position;
-    glm::vec3 Normal;
-    glm::vec2 TexCoords;
-};
-
-// Texture structure for model textures
-struct Texture {
-    unsigned int id;
-    std::string type;
-    std::string path;
-};
-
-// Mesh class to handle individual meshes in a model
-class Mesh {
-public:
-    // Mesh Data
-    std::vector<Vertex> vertices;
-    std::vector<unsigned int> indices;
-    std::vector<Texture> textures;
-
-    // Constructor
-    Mesh(std::vector<Vertex> vertices, std::vector<unsigned int> indices, std::vector<Texture> textures) {
-        this->vertices = vertices;
-        this->indices = indices;
-        this->textures = textures;
-
-        // Now set up mesh and buffer objects
-        setupMesh();
-    }
-
-    // Render the mesh
-    void Draw(Shader &shader) {
-        // Bind appropriate textures
-        unsigned int diffuseNr = 1;
-        unsigned int specularNr = 1;
-        unsigned int normalNr = 1;
-        unsigned int heightNr = 1;
-
-        for(unsigned int i = 0; i < textures.size(); i++) {
-            glActiveTexture(GL_TEXTURE0 + i); // Active proper texture unit before binding
-            // Retrieve texture number (the N in diffuse_textureN)
-            std::string number;
-            std::string name = textures[i].type;
-            if(name == "texture_diffuse")
-                number = std::to_string(diffuseNr++);
-            else if(name == "texture_specular")
-                number = std::to_string(specularNr++);
-            else if(name == "texture_normal")
-                number = std::to_string(normalNr++);
-            else if(name == "texture_height")
-                number = std::to_string(heightNr++);
-
-            // Set the sampler to the correct texture unit
-            shader.setInt((name + number).c_str(), i);
-            // Bind the texture
-            glBindTexture(GL_TEXTURE_2D, textures[i].id);
-        }
-
-        // Draw mesh
-        glBindVertexArray(VAO);
-        glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0);
-        glBindVertexArray(0);
-
-        // Reset to default texture unit
-        glActiveTexture(GL_TEXTURE0);
-    }
-
-private:
-    // Render data
-    unsigned int VAO, VBO, EBO;
-
-    // Initializes all the buffer objects/arrays
-    void setupMesh() {
-        // Create buffers/arrays
-        glGenVertexArrays(1, &VAO);
-        glGenBuffers(1, &VBO);
-        glGenBuffers(1, &EBO);
-
-        // Load data into vertex buffers
-        glBindVertexArray(VAO);
-        // Load vertex buffer
-        glBindBuffer(GL_ARRAY_BUFFER, VBO);
-        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex), &vertices[0], GL_STATIC_DRAW);
-
-        // Load index buffer
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STATIC_DRAW);
-
-        // Set the vertex attribute pointers
-        // Vertex Positions
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
-        // Vertex Normals
-        glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Normal));
-        // Vertex Texture Coords
-        glEnableVertexAttribArray(2);
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, TexCoords));
-
-        glBindVertexArray(0);
-    }
-};
-
-// Utility function to load texture
-unsigned int TextureFromFile(const char *path, const std::string &directory, bool gamma) {
-    std::string filename = std::string(path);
-
-    // List of places to look for the texture
-    std::vector<std::string> possiblePaths;
-
-    // 1. Exact path from the model
-    possiblePaths.push_back(directory + '/' + filename);
-
-    // 2. Just the filename in the same directory (in case the path in FBX has subdirectories)
-    possiblePaths.push_back(directory + '/' + filename.substr(filename.find_last_of("/\\") + 1));
-
-    // 3. In a textures subdirectory
-    possiblePaths.push_back(directory + "/textures/" + filename);
-    possiblePaths.push_back(directory + "/textures/" + filename.substr(filename.find_last_of("/\\") + 1));
-
-    // 4. In a sibling textures directory
-    std::string parentDir = directory.substr(0, directory.find_last_of("/\\"));
-    possiblePaths.push_back(parentDir + "/textures/" + filename);
-    possiblePaths.push_back(parentDir + "/textures/" + filename.substr(filename.find_last_of("/\\") + 1));
-
-    // Create texture ID
-    unsigned int textureID;
-    glGenTextures(1, &textureID);
-
-    // Try each possible path
-    unsigned char *data = nullptr;
-    std::string successPath;
-    int width, height, nrComponents;
-
-    for (const auto& tryPath : possiblePaths) {
-        data = stbi_load(tryPath.c_str(), &width, &height, &nrComponents, 0);
-        if (data) {
-            successPath = tryPath;
-            break;
-        }
-    }
-
-    // If we found a texture, load it
-    if (data) {
-        GLenum format;
-        if (nrComponents == 1)
-            format = GL_RED;
-        else if (nrComponents == 3)
-            format = GL_RGB;
-        else if (nrComponents == 4)
-            format = GL_RGBA;
-
-        glBindTexture(GL_TEXTURE_2D, textureID);
-        glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
-        glGenerateMipmap(GL_TEXTURE_2D);
-
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-        std::cout << "Loaded texture: " << successPath << std::endl;
-        stbi_image_free(data);
-    }
-    else {
-        std::cout << "Texture failed to load at path: " << path << std::endl;
-        std::cout << "Tried paths:" << std::endl;
-        for (const auto& tryPath : possiblePaths) {
-            std::cout << "  " << tryPath << std::endl;
-        }
-    }
-
-    return textureID;
-}
-
-// Global vector to store loaded textures
-std::vector<Texture> textures_loaded;
-
-
-class Model {
-public:
-    // Load model from file
-    Model(const char* path) {
-        loadModel(path);
-    }
-
-    // Render the model
-    void Draw(Shader &shader) {
-        for(unsigned int i = 0; i < meshes.size(); i++) {
-            meshes[i].Draw(shader);
-        }
-    }
-
-private:
-    // Model data
-    std::vector<Mesh> meshes;
-    std::string directory;
-
-    // Model loading function
-         void loadModel(std::string path) {
-            Assimp::Importer importer;
-            const aiScene* scene = importer.ReadFile(path,
-                aiProcess_Triangulate |
-                aiProcess_GenSmoothNormals |
-                aiProcess_FlipUVs |
-                aiProcess_CalcTangentSpace     // Important for normal maps
-            );
-
-        // Check for errors
-        if(!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
-            std::cout << "ERROR::ASSIMP::" << importer.GetErrorString() << std::endl;
-            return;
-        }
-
-        // Retrieve the directory path of the filepath
-        directory = path.substr(0, path.find_last_of('/'));
-
-        // Process ASSIMP's root node recursively
-        processNode(scene->mRootNode, scene);
-    }
-
-    // Recursive node processing
-    void processNode(aiNode *node, const aiScene *scene) {
-        // Process each mesh located at the current node
-        for(unsigned int i = 0; i < node->mNumMeshes; i++) {
-            // The node object only contains indices to index the actual objects in the scene.
-            // The scene contains all the data, node is just to organize the data.
-            aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-            meshes.push_back(processMesh(mesh, scene));
-        }
-        // After processing all of the meshes, recursively process each of the children nodes
-        for(unsigned int i = 0; i < node->mNumChildren; i++) {
-            processNode(node->mChildren[i], scene);
-        }
-    }
-
-    // Mesh processing
-    Mesh processMesh(aiMesh *mesh, const aiScene *scene) {
-        // Data to fill
-        std::vector<Vertex> vertices;
-        std::vector<unsigned int> indices;
-        std::vector<Texture> textures;
-
-        // Walk through each of the mesh's vertices
-        for(unsigned int i = 0; i < mesh->mNumVertices; i++) {
-            Vertex vertex;
-            // Positions
-            vertex.Position = glm::vec3(
-                mesh->mVertices[i].x,
-                mesh->mVertices[i].y,
-                mesh->mVertices[i].z
-            );
-            // Normals
-            vertex.Normal = glm::vec3(
-                mesh->mNormals[i].x,
-                mesh->mNormals[i].y,
-                mesh->mNormals[i].z
-            );
-            // Texture Coordinates (if available)
-            if(mesh->mTextureCoords[0]) {
-                glm::vec2 vec;
-                vec.x = mesh->mTextureCoords[0][i].x;
-                vec.y = mesh->mTextureCoords[0][i].y;
-                vertex.TexCoords = vec;
-            } else {
-                vertex.TexCoords = glm::vec2(0.0f, 0.0f);
-            }
-            vertices.push_back(vertex);
-        }
-        // Process indices
-        for(unsigned int i = 0; i < mesh->mNumFaces; i++) {
-            aiFace face = mesh->mFaces[i];
-            for(unsigned int j = 0; j < face.mNumIndices; j++)
-                indices.push_back(face.mIndices[j]);
-        }
-
-        // Process material
-    // In your processMesh function:
-                if(mesh->mMaterialIndex >= 0) {
-                    aiMaterial *material = scene->mMaterials[mesh->mMaterialIndex];
-
-                       // Debug material properties
-    aiString name;
-    if(material->Get(AI_MATKEY_NAME, name) == AI_SUCCESS) {
-        std::cout << "Material name: " << name.C_Str() << std::endl;
-    }
-
-    // Check if material has color properties
-    aiColor4D diffuse;
-    if(material->Get(AI_MATKEY_COLOR_DIFFUSE, diffuse) == AI_SUCCESS) {
-        std::cout << "Diffuse color: " << diffuse.r << ", " << diffuse.g << ", "
-                  << diffuse.b << ", " << diffuse.a << std::endl;
-    }
-
-
-                    // Try multiple texture types
-                    std::vector<Texture> diffuseMaps = loadMaterialTextures(material,
-                        aiTextureType_DIFFUSE, "texture_diffuse");
-                    textures.insert(textures.end(), diffuseMaps.begin(), diffuseMaps.end());
-
-                    // Try PBR base color (might be used instead of diffuse)
-                    std::vector<Texture> baseColorMaps = loadMaterialTextures(material,
-                        aiTextureType_BASE_COLOR, "texture_diffuse");
-                    textures.insert(textures.end(), baseColorMaps.begin(), baseColorMaps.end());
-
-                    // Try other types if needed
-                    std::vector<Texture> specularMaps = loadMaterialTextures(material,
-                        aiTextureType_SPECULAR, "texture_specular");
-                    textures.insert(textures.end(), specularMaps.begin(), specularMaps.end());
-                }
-
-        return Mesh(vertices, indices, textures);
-    }
-
-    // Texture loading
-    std::vector<Texture> loadMaterialTextures(aiMaterial *mat, aiTextureType type, std::string typeName) {
-        std::vector<Texture> textures;
-         std::cout << "Looking for textures of type: " << typeName << ", count: " << mat->GetTextureCount(type) << std::endl;
-           // Try all common texture types if no textures found
-    if (mat->GetTextureCount(type) == 0 && type == aiTextureType_DIFFUSE) {
-        // Try PBR base color (glTF uses this)
-        return loadMaterialTextures(mat, aiTextureType_BASE_COLOR, typeName);
-    }
-
-        for(unsigned int i = 0; i < mat->GetTextureCount(type); i++) {
-            aiString str;
-            mat->GetTexture(type, i, &str);
-        std::cout << "Texture path from model: " << str.C_Str() << std::endl;
-            // Check if texture was loaded before
-            bool skip = false;
-            for(unsigned int j = 0; j < textures_loaded.size(); j++) {
-                if(std::strcmp(textures_loaded[j].path.data(), str.C_Str()) == 0) {
-                    textures.push_back(textures_loaded[j]);
-                    skip = true;
-                    break;
-                }
-            }
-            if(!skip) {   // If texture hasn't been loaded already, load it
-                Texture texture;
-               texture.id = TextureFromFile(str.C_Str(), directory, false);
-                texture.type = typeName;
-                texture.path = str.C_Str();
-                textures.push_back(texture);
-                textures_loaded.push_back(texture);
-            }
-        }
-        return textures;
     }
 };
 
@@ -1281,17 +920,6 @@ void processInput(GLFWwindow* window) {
     } else {
         nKeyPressed = false;
     }
-       // Add the G key toggle for grid
-    static bool gKeyPressed = false;
-    if (glfwGetKey(window, GLFW_KEY_G) == GLFW_PRESS) {
-        if (!gKeyPressed) {
-            showGrid = !showGrid;
-            std::cout << "Grid " << (showGrid ? "enabled" : "disabled") << std::endl;
-            gKeyPressed = true;
-        }
-    } else {
-        gKeyPressed = false;
-    }
 }
 
 void renderGrid(Shader& shader, const Map& map) {
@@ -1446,8 +1074,6 @@ void createShaderFiles() {
         fShader << "uniform sampler2D normalMap;\n";
         fShader << "uniform bool useTexture;\n";
         fShader << "uniform bool useNormalMap;\n\n";
-        fShader << "uniform sampler2D texture_diffuse1;\n";
-        fShader << "uniform int textureType;\n";  // Add this line
 
         fShader << "void main()\n";
         fShader << "{\n";
@@ -1470,18 +1096,12 @@ void createShaderFiles() {
         fShader << "    float diff = max(dot(norm, lightDir), 0.0);\n";
         fShader << "    vec3 diffuse = diff * lightColor;\n\n";
 
-         // In the fragment shader creation part:
         fShader << "    // Result\n";
         fShader << "    vec3 result;\n";
         fShader << "    if (useTexture) {\n";
-        fShader << "        vec3 texColor;\n";
-        fShader << "        if (textureType == 1) {\n";  // Model texture
-        fShader << "            texColor = texture(texture_diffuse1, TexCoord).rgb;\n";
-        fShader << "        } else {\n";  // Wall texture
-        fShader << "            texColor = texture(wallTexture, TexCoord).rgb;\n";
-        fShader << "        }\n";
+        fShader << "        vec3 texColor = texture(wallTexture, TexCoord).rgb;\n";
         fShader << "        result = (ambient + diffuse) * texColor;\n";
-        fShader << "    } else {\n";  // This else clause was missing
+        fShader << "    } else {\n";
         fShader << "        result = (ambient + diffuse) * objectColor;\n";
         fShader << "    }\n\n";
 
@@ -1492,8 +1112,6 @@ void createShaderFiles() {
 }
 
 int main() {
-
-
     // Initialize GLFW
     glfwSetErrorCallback(error_callback);
     if (!glfwInit()) {
@@ -1569,9 +1187,6 @@ glEnable(GL_DEPTH_TEST);
     // Create cube model
     CubeModel cubeModel;
 
-    //Models
-    Model cakeModel("C:/Programs/SDL3_projects/GateWay3D/GateWay3D/Models/Cake/scene.gltf");
-
     // Main loop
     while (!glfwWindowShouldClose(window)) {
         // Per-frame time logic
@@ -1622,8 +1237,6 @@ glEnable(GL_DEPTH_TEST);
                     }
 
                     glm::mat4 model = glm::mat4(1.0f);
-
-       //************ THIS CAUSED THE COLLISION DETECTION TO NOT WORK, WE HAD 0,5 diffrence with the game world grid ***********
               // Translate to the center of the grid cell, not the corner
                     model = glm::translate(model, glm::vec3(
                         (x + 0.5f) * CELL_SIZE,
@@ -1655,34 +1268,8 @@ glEnable(GL_DEPTH_TEST);
         shader.setVec3("objectColor", glm::vec3(0.5f, 0.5f, 0.6f)); // Light blue-gray ceiling
         cubeModel.render();
 
-        // Render cake model
-        // In your main rendering loop, where you render the cake:
-                glm::mat4 cakeModelMatrix = glm::mat4(1.0f);
-
-                // Change these values to move the cake to a different position
-                float posX = 5.0f;  // X position (specific cell in your map)
-                float posY = 0.5f;  // Y position (height above floor)
-                float posZ = 7.0f;  // Z position (specific cell in your map)
-
-                cakeModelMatrix = glm::translate(cakeModelMatrix, glm::vec3(posX, posY, posZ));
-
-                // You can also adjust rotation if desired
-                float rotationAngle = glm::radians(45.0f);  // 45 degrees rotation around Y axis
-                cakeModelMatrix = glm::rotate(cakeModelMatrix, rotationAngle, glm::vec3(0.0f, 1.0f, 0.0f));
-
-                // Keep your existing scale
-                cakeModelMatrix = glm::scale(cakeModelMatrix, glm::vec3(0.1f, 0.1f, 0.1f));
-
-                shader.setMat4("model", cakeModelMatrix);
-                // Before drawing the cake:
-                shader.setBool("useTexture", true);
-                shader.setInt("textureType", 1);  // Signal it's a model texture
-                cakeModel.Draw(shader);
-
         // UNCOMMENT TO SEE line to grid being rendered to the game world
-                if (showGrid) {
-                    renderGrid(shader, map);
-                }
+        renderGrid(shader, map);
 
          // *** UNCOMMENT TO SEE line to render the debug circle
         //renderDebugCircle(shader, camera, playerWidth * 1.6f); // Using the same safety radius as in collideWithMap

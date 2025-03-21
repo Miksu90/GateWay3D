@@ -586,14 +586,13 @@ private:
     std::string directory;
 
     // Model loading function
-         void loadModel(std::string path) {
-            Assimp::Importer importer;
-            const aiScene* scene = importer.ReadFile(path,
-                aiProcess_Triangulate |
-                aiProcess_GenSmoothNormals |
-                aiProcess_FlipUVs |
-                aiProcess_CalcTangentSpace     // Important for normal maps
-            );
+    void loadModel(std::string path) {
+        Assimp::Importer importer;
+        const aiScene* scene = importer.ReadFile(path,
+            aiProcess_Triangulate |
+            aiProcess_GenSmoothNormals |
+            aiProcess_FlipUVs
+        );
 
         // Check for errors
         if(!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
@@ -705,12 +704,6 @@ private:
     std::vector<Texture> loadMaterialTextures(aiMaterial *mat, aiTextureType type, std::string typeName) {
         std::vector<Texture> textures;
          std::cout << "Looking for textures of type: " << typeName << ", count: " << mat->GetTextureCount(type) << std::endl;
-           // Try all common texture types if no textures found
-    if (mat->GetTextureCount(type) == 0 && type == aiTextureType_DIFFUSE) {
-        // Try PBR base color (glTF uses this)
-        return loadMaterialTextures(mat, aiTextureType_BASE_COLOR, typeName);
-    }
-
         for(unsigned int i = 0; i < mat->GetTextureCount(type); i++) {
             aiString str;
             mat->GetTexture(type, i, &str);
@@ -1446,8 +1439,6 @@ void createShaderFiles() {
         fShader << "uniform sampler2D normalMap;\n";
         fShader << "uniform bool useTexture;\n";
         fShader << "uniform bool useNormalMap;\n\n";
-        fShader << "uniform sampler2D texture_diffuse1;\n";
-        fShader << "uniform int textureType;\n";  // Add this line
 
         fShader << "void main()\n";
         fShader << "{\n";
@@ -1470,18 +1461,12 @@ void createShaderFiles() {
         fShader << "    float diff = max(dot(norm, lightDir), 0.0);\n";
         fShader << "    vec3 diffuse = diff * lightColor;\n\n";
 
-         // In the fragment shader creation part:
         fShader << "    // Result\n";
         fShader << "    vec3 result;\n";
         fShader << "    if (useTexture) {\n";
-        fShader << "        vec3 texColor;\n";
-        fShader << "        if (textureType == 1) {\n";  // Model texture
-        fShader << "            texColor = texture(texture_diffuse1, TexCoord).rgb;\n";
-        fShader << "        } else {\n";  // Wall texture
-        fShader << "            texColor = texture(wallTexture, TexCoord).rgb;\n";
-        fShader << "        }\n";
+        fShader << "        vec3 texColor = texture(wallTexture, TexCoord).rgb;\n";
         fShader << "        result = (ambient + diffuse) * texColor;\n";
-        fShader << "    } else {\n";  // This else clause was missing
+        fShader << "    } else {\n";
         fShader << "        result = (ambient + diffuse) * objectColor;\n";
         fShader << "    }\n\n";
 
@@ -1570,7 +1555,7 @@ glEnable(GL_DEPTH_TEST);
     CubeModel cubeModel;
 
     //Models
-    Model cakeModel("C:/Programs/SDL3_projects/GateWay3D/GateWay3D/Models/Cake/scene.gltf");
+    Model cakeModel("C:/Programs/SDL3_projects/GateWay3D/GateWay3D/Models/Cake/source/Cake01.fbx");
 
     // Main loop
     while (!glfwWindowShouldClose(window)) {
@@ -1674,9 +1659,6 @@ glEnable(GL_DEPTH_TEST);
                 cakeModelMatrix = glm::scale(cakeModelMatrix, glm::vec3(0.1f, 0.1f, 0.1f));
 
                 shader.setMat4("model", cakeModelMatrix);
-                // Before drawing the cake:
-                shader.setBool("useTexture", true);
-                shader.setInt("textureType", 1);  // Signal it's a model texture
                 cakeModel.Draw(shader);
 
         // UNCOMMENT TO SEE line to grid being rendered to the game world

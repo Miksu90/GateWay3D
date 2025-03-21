@@ -12,11 +12,15 @@
 				<Option type="1" />
 				<Option compiler="gcc" />
 				<Compiler>
+					<Add option="-std=c17" />
 					<Add option="-g" />
+					<Add option="-std=c++17 -Wno-deprecated" />
 					<Add directory="C:/Users/pfe90/CodeBlocks/MinGW/include" />
-					<Add directory="C:/msys64/ucrt64/include" />
+					<Add directory="C:/msys64/mingw64/include" />
+					<Add directory="C:/msys64/mingw64/include/assimp" />
 				</Compiler>
 				<Linker>
+					<Add option="-lassimp" />
 					<Add library="glfw3" />
 					<Add library="gdi32" />
 					<Add library="opengl32" />
@@ -24,7 +28,9 @@
 					<Add library="kernel32" />
 					<Add library="glu32" />
 					<Add library="glew32" />
-					<Add directory="C:/msys64/ucrt64/lib" />
+					<Add library="assimp" />
+					<Add directory="C:/msys64/mingw64/lib" />
+					<Add directory="C:/msys64/mingw64/bin" />
 				</Linker>
 			</Target>
 			<Target title="Release">
@@ -51,6 +57,7 @@
 		<Unit filename="map.txt" />
 		<Unit filename="shader.fs" />
 		<Unit filename="shader.vs" />
+		<Unit filename="stb_image.h" />
 		<Extensions>
 			<lib_finder disable_auto="1" />
 		</Extensions>
