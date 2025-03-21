@@ -1,3 +1,42 @@
+#USE MSYS2 to install compiler and libraries (stb_image.h can be just added to Project from git hub)
+Settings->Compiler->Toolchain Executable => Selected MINGW64/bin installation folder
+
+
+MSYS2-console
+	pacman -Syu
+	pacman -S mingw-w64-x86_64-toolchain mingw-w64-x86_64-glew mingw-w64-x86_64-glfw mingw-w64-x86_64-glm
+	pacman -S mingw-w64-x86_64-assimp
+
+
+Build Options:
+	*Linker settings ->
+		*Link libraries
+			glfw3
+			gdi32
+			opengl32
+			kernel32
+			glu32
+			glew32
+			assimp
+		*Other linker options
+			-lassimp
+	*Seach directories
+		*Compiler
+			(C:\Users\pfe90\CodeBlocks\MinGW\include)  **** TEST WITHOUT THIS FIRST NOT MANDATORY MAYBE	
+			C:\msys64\mingw64\include
+			C:\msys64\mingw64\include\assimp
+		*Linker
+			C:\msys64\mingw64\lib
+			C:\msys64\mingw64\bin
+
+
+
+DO NOT USE THESE OLD INSTRUCTIONS:
+                
+
+
+
+
 # Setting Up CodeBlocks for GateWay3D on a New Computer
 
 Based on our discussions, here's a guide to set up CodeBlocks with GLEW and GLFW using MSYS2 for the GateWay3D project:
