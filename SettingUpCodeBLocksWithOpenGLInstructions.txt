@@ -1,11 +1,16 @@
 #USE MSYS2 to install compiler and libraries (stb_image.h can be just added to Project from git hub)
-Settings->Compiler->Toolchain Executable => Selected MINGW64/bin installation folder
+
 
 
 MSYS2-console
 	pacman -Syu
 	pacman -S mingw-w64-x86_64-toolchain mingw-w64-x86_64-glew mingw-w64-x86_64-glfw mingw-w64-x86_64-glm
 	pacman -S mingw-w64-x86_64-assimp
+
+
+CodeBlocks:
+
+Settings->Compiler->Toolchain Executable => Selected MINGW64/bin installation folder
 
 
 Build Options:
