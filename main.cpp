@@ -50,10 +50,15 @@ bool playerOnGround = true;
 
 // World settings
 const float CELL_SIZE = 1.0f;
-const float WALL_HEIGHT = 2.0f;
+const float WALL_HEIGHT = 4.0f;
 
 bool useNormalMaps = true;  // Start with normal maps enabled
 bool showGrid = false;  // Show grid or not
+
+bool flashlightOn = false;  // Toggle state for flashlight
+float flashlightCutoff = 12.5f;  // Inner cone angle in degrees
+float flashlightOuterCutoff = 17.5f;  // Outer cone angle in degrees
+float flashlightIntensity = 1.0f;  // Brightness multiplier
 
 // Shader class to handle shaders
 class Shader {
@@ -154,6 +159,9 @@ public:
     }
     void setFloat(const std::string &name, float value) const {
         glUniform1f(glGetUniformLocation(ID, name.c_str()), value);
+    }
+    void setVec2(const std::string &name, const glm::vec2 &value) const {
+        glUniform2fv(glGetUniformLocation(ID, name.c_str()), 1, &value[0]);
     }
     void setVec3(const std::string &name, const glm::vec3 &value) const {
         glUniform3fv(glGetUniformLocation(ID, name.c_str()), 1, &value[0]);
@@ -294,56 +302,55 @@ public:
     CubeModel() {
         // Vertex data for a cube with proper texture orientation for each face
         // Format: position(3), normal(3), texcoord(2), tangent(3), bitangent(3)
-        float vertices[] = {
-            // positions          // normals           // texture coords    // tangent            // bitangent
-            // Front face (negative Z)
-            -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
-             0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
-             0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
-             0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
-            -0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
-            -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
+    float vertices[] = {
+        // Front face (negative Z)
+        -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
+         0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
+         0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
+         0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
+        -0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
+        -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
 
-            // Back face (positive Z)
-            -0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f, 0.0f,        -1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
-             0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f, 0.0f,        -1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
-             0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f, 1.0f,        -1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
-             0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f, 1.0f,        -1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
-            -0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f, 1.0f,        -1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
-            -0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f, 0.0f,        -1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
+        // Back face (positive Z)
+        -0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f, 1.0f,        -1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
+         0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f, 1.0f,        -1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
+         0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f, 0.0f,        -1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
+         0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f, 0.0f,        -1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
+        -0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f, 0.0f,        -1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
+        -0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f, 1.0f,        -1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
 
-            // Left face (negative X)
-            -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 1.0f,         0.0f, 0.0f, -1.0f,   0.0f, 1.0f, 0.0f,
-            -0.5f,  0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 1.0f,         0.0f, 0.0f, -1.0f,   0.0f, 1.0f, 0.0f,
-            -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 0.0f,         0.0f, 0.0f, -1.0f,   0.0f, 1.0f, 0.0f,
-            -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 0.0f,         0.0f, 0.0f, -1.0f,   0.0f, 1.0f, 0.0f,
-            -0.5f, -0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 0.0f,         0.0f, 0.0f, -1.0f,   0.0f, 1.0f, 0.0f,
-            -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 1.0f,         0.0f, 0.0f, -1.0f,   0.0f, 1.0f, 0.0f,
+        // Left face (negative X)
+        -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 0.0f,         0.0f, 0.0f, -1.0f,   0.0f, 1.0f, 0.0f,
+        -0.5f,  0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 0.0f,         0.0f, 0.0f, -1.0f,   0.0f, 1.0f, 0.0f,
+        -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 1.0f,         0.0f, 0.0f, -1.0f,   0.0f, 1.0f, 0.0f,
+        -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 1.0f,         0.0f, 0.0f, -1.0f,   0.0f, 1.0f, 0.0f,
+        -0.5f, -0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 1.0f,         0.0f, 0.0f, -1.0f,   0.0f, 1.0f, 0.0f,
+        -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 0.0f,         0.0f, 0.0f, -1.0f,   0.0f, 1.0f, 0.0f,
 
-            // Right face (positive X)
-             0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 1.0f,         0.0f, 0.0f, 1.0f,    0.0f, 1.0f, 0.0f,
-             0.5f,  0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f,         0.0f, 0.0f, 1.0f,    0.0f, 1.0f, 0.0f,
-             0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f,         0.0f, 0.0f, 1.0f,    0.0f, 1.0f, 0.0f,
-             0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f,         0.0f, 0.0f, 1.0f,    0.0f, 1.0f, 0.0f,
-             0.5f, -0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 0.0f,         0.0f, 0.0f, 1.0f,    0.0f, 1.0f, 0.0f,
-             0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 1.0f,         0.0f, 0.0f, 1.0f,    0.0f, 1.0f, 0.0f,
+        // Right face (positive X)
+         0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f,         0.0f, 0.0f, 1.0f,    0.0f, 1.0f, 0.0f,
+         0.5f,  0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 0.0f,         0.0f, 0.0f, 1.0f,    0.0f, 1.0f, 0.0f,
+         0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 1.0f,         0.0f, 0.0f, 1.0f,    0.0f, 1.0f, 0.0f,
+         0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 1.0f,         0.0f, 0.0f, 1.0f,    0.0f, 1.0f, 0.0f,
+         0.5f, -0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f,         0.0f, 0.0f, 1.0f,    0.0f, 1.0f, 0.0f,
+         0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f,         0.0f, 0.0f, 1.0f,    0.0f, 1.0f, 0.0f,
 
-            // Bottom face (negative Y)
-            -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, -1.0f,
-             0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, -1.0f,
-             0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, -1.0f,
-             0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, -1.0f,
-            -0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, -1.0f,
-            -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, -1.0f,
+        // Bottom face (negative Y)
+        -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, -1.0f,
+         0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, -1.0f,
+         0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, -1.0f,
+         0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, -1.0f,
+        -0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, -1.0f,
+        -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, -1.0f,
 
-            // Top face (positive Y)
-            -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, 1.0f,
-             0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, 1.0f,
-             0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, 1.0f,
-             0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, 1.0f,
-            -0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, 1.0f,
-            -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, 1.0f
-        };
+        // Top face (positive Y)
+        -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, 1.0f,
+         0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, 1.0f,
+         0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, 1.0f,
+         0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, 1.0f,
+        -0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, 1.0f,
+        -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, 1.0f
+    };
 
         // Generate and bind the Vertex Array Object
         glGenVertexArrays(1, &VAO);
@@ -742,8 +749,12 @@ public:
     // Store textures in a map instead of a vector for direct ID access
     std::map<int, unsigned int> textures;
     std::map<int, unsigned int> normalMaps;
+    std::map<int, unsigned int> roughnessMaps;
     std::map<int, bool> hasNormalMap;
+    std::map<int, bool> hasRoughnessMap;
+    std::map<int, bool> isObjectTexture;
 
+    // Load a texture with the standard naming convention (wall_[textureID])
     void loadTexture(int textureID) {
         // Skip if already loaded
         if (textures.find(textureID) != textures.end()) {
@@ -754,9 +765,127 @@ public:
         std::string extensions[] = {".png", ".jpg", ".jpeg"};
         bool loaded = false;
 
+      // First try to load as an object texture
+    std::string objectFilename = "textures/object_" + std::to_string(textureID);
+    for (const auto& ext : extensions) {
+        // Try loading the object texture first
+        unsigned int textureHandle;
+        glGenTextures(1, &textureHandle);
+
+        int width, height, nrChannels;
+        unsigned char* data = stbi_load((objectFilename + ext).c_str(), &width, &height, &nrChannels, 0);
+        if (data) {
+            GLenum format;
+            if (nrChannels == 1)
+                format = GL_RED;
+            else if (nrChannels == 3)
+                format = GL_RGB;
+            else if (nrChannels == 4)
+                format = GL_RGBA;
+
+            glBindTexture(GL_TEXTURE_2D, textureHandle);
+            glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+            glGenerateMipmap(GL_TEXTURE_2D);
+
+            // Set texture parameters
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+            // Store texture in the map
+            textures[textureID] = textureHandle;
+            isObjectTexture[textureID] = true; // Mark as an object texture
+
+            std::cout << "Loaded object texture: " << objectFilename + ext << std::endl;
+            loaded = true;
+            stbi_image_free(data);
+            break; // Exit the loop once a texture is successfully loaded
+        }
+        if (data) stbi_image_free(data);
+    }
+
+    // If not loaded as object, try as wall texture
+    if (!loaded) {
+        std::string wallFilename = "textures/wall_" + std::to_string(textureID);
         for (const auto& ext : extensions) {
-            // Construct the filename
-            std::string filename = "textures/wall_" + std::to_string(textureID) + ext;
+            unsigned int textureHandle;
+            glGenTextures(1, &textureHandle);
+
+            int width, height, nrChannels;
+            unsigned char* data = stbi_load((wallFilename + ext).c_str(), &width, &height, &nrChannels, 0);
+            if (data) {
+                GLenum format;
+                if (nrChannels == 1)
+                    format = GL_RED;
+                else if (nrChannels == 3)
+                    format = GL_RGB;
+                else if (nrChannels == 4)
+                    format = GL_RGBA;
+
+                glBindTexture(GL_TEXTURE_2D, textureHandle);
+                glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+                glGenerateMipmap(GL_TEXTURE_2D);
+
+                // Set texture parameters
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+                // Store texture in the map
+                textures[textureID] = textureHandle;
+                isObjectTexture[textureID] = false; // Mark as a wall texture
+
+                std::cout << "Loaded wall texture: " << wallFilename + ext << std::endl;
+                loaded = true;
+                stbi_image_free(data);
+                break;
+            }
+            if (data) stbi_image_free(data);
+        }
+    }
+
+    if (!loaded) {
+        std::cout << "Failed to load texture for ID: " << textureID << " (tried both object_ and wall_ prefixes)" << std::endl;
+        // Add a default texture or placeholder
+        textures[textureID] = 0;
+        isObjectTexture[textureID] = false;
+    }
+
+    // Now try to load the normal map and roughness map
+    if (isObjectTexture[textureID]) {
+        loadNormalMapWithName(textureID, "object_" + std::to_string(textureID));
+        loadRoughnessMapWithName(textureID, "object_" + std::to_string(textureID));
+    } else {
+        loadNormalMap(textureID);
+        loadRoughnessMap(textureID);
+    }
+}
+
+    // Add a method to check if a texture is an object
+            bool isObject(int textureID) {
+                if (isObjectTexture.find(textureID) == isObjectTexture.end()) {
+                    return false; // Default to wall if not specified
+                }
+                return isObjectTexture[textureID];
+            }
+
+    // Load a texture with a custom base name
+    void loadTextureWithName(int textureID, const std::string& baseName) {
+         isObjectTexture[textureID] = (baseName.find("object_") == 0);
+        // Skip if already loaded
+        if (textures.find(textureID) != textures.end()) {
+            return;
+        }
+
+        // Try different file extensions for diffuse texture
+        std::string extensions[] = {".png", ".jpg", ".jpeg"};
+        bool loaded = false;
+
+        for (const auto& ext : extensions) {
+            // Construct the filename with custom base name
+            std::string filename = "textures/" + baseName + ext;
 
             // Load the texture
             unsigned int textureHandle;
@@ -791,19 +920,23 @@ public:
                 stbi_image_free(data);
                 break; // Exit the loop once a texture is successfully loaded
             }
-            stbi_image_free(data); // Free data even if loading failed
+            if (data) stbi_image_free(data); // Free data even if loading failed
         }
 
         if (!loaded) {
-            std::cout << "Failed to load texture for ID: " << textureID << " (tried png, jpg, jpeg)" << std::endl;
+            std::cout << "Failed to load texture for base name: " << baseName << " (tried png, jpg, jpeg)" << std::endl;
             // Add a default texture or placeholder
             textures[textureID] = 0;
         }
 
         // Now try to load the normal map with _N suffix
-        loadNormalMap(textureID);
+        loadNormalMapWithName(textureID, baseName);
+
+        // Now try to load the roughness map with _R suffix
+        loadRoughnessMapWithName(textureID, baseName);
     }
 
+    // Load a normal map with the standard naming convention (wall_[textureID]_N)
     void loadNormalMap(int textureID) {
         // Default to no normal map
         hasNormalMap[textureID] = false;
@@ -848,13 +981,167 @@ public:
                 stbi_image_free(data);
                 return; // Exit once we found a valid normal map
             }
-            stbi_image_free(data); // Free data even if loading failed
+            if (data) stbi_image_free(data); // Free data even if loading failed
         }
 
         std::cout << "No normal map found for texture ID: " << textureID << std::endl;
     }
 
-    // Bind textures with normal map support
+    // Load a normal map with a custom base name
+    void loadNormalMapWithName(int textureID, const std::string& baseName) {
+        // Default to no normal map
+        hasNormalMap[textureID] = false;
+
+        // Try different file extensions for normal map
+        std::string extensions[] = {".png", ".jpg", ".jpeg"};
+
+        for (const auto& ext : extensions) {
+            // Construct the filename with _N suffix
+            std::string filename = "textures/" + baseName + "_N" + ext;
+
+            // Load the texture
+            unsigned int textureHandle;
+            glGenTextures(1, &textureHandle);
+
+            int width, height, nrChannels;
+            unsigned char* data = stbi_load(filename.c_str(), &width, &height, &nrChannels, 0);
+            if (data) {
+                GLenum format;
+                if (nrChannels == 1)
+                    format = GL_RED;
+                else if (nrChannels == 3)
+                    format = GL_RGB;
+                else if (nrChannels == 4)
+                    format = GL_RGBA;
+
+                glBindTexture(GL_TEXTURE_2D, textureHandle);
+                glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+                glGenerateMipmap(GL_TEXTURE_2D);
+
+                // Set texture parameters
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+                // Store normal map in the map
+                normalMaps[textureID] = textureHandle;
+                hasNormalMap[textureID] = true;
+
+                std::cout << "Loaded normal map: " << filename << std::endl;
+                stbi_image_free(data);
+                return; // Exit once we found a valid normal map
+            }
+            if (data) stbi_image_free(data); // Free data even if loading failed
+        }
+
+        std::cout << "No normal map found for base name: " << baseName << std::endl;
+    }
+
+    // Load a roughness map with the standard naming convention (wall_[textureID]_R)
+    void loadRoughnessMap(int textureID) {
+        // Default to no roughness map
+        hasRoughnessMap[textureID] = false;
+
+        // Try different file extensions for roughness map
+        std::string extensions[] = {".png", ".jpg", ".jpeg"};
+
+        for (const auto& ext : extensions) {
+            // Construct the filename with _R suffix
+            std::string filename = "textures/wall_" + std::to_string(textureID) + "_R" + ext;
+
+            // Load the texture
+            unsigned int textureHandle;
+            glGenTextures(1, &textureHandle);
+
+            int width, height, nrChannels;
+            unsigned char* data = stbi_load(filename.c_str(), &width, &height, &nrChannels, 0);
+            if (data) {
+                GLenum format;
+                if (nrChannels == 1)
+                    format = GL_RED;
+                else if (nrChannels == 3)
+                    format = GL_RGB;
+                else if (nrChannels == 4)
+                    format = GL_RGBA;
+
+                glBindTexture(GL_TEXTURE_2D, textureHandle);
+                glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+                glGenerateMipmap(GL_TEXTURE_2D);
+
+                // Set texture parameters
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+                // Store roughness map in the map
+                roughnessMaps[textureID] = textureHandle;
+                hasRoughnessMap[textureID] = true;
+
+                std::cout << "Loaded roughness map: " << filename << std::endl;
+                stbi_image_free(data);
+                return; // Exit once we found a valid roughness map
+            }
+            if (data) stbi_image_free(data); // Free data even if loading failed
+        }
+
+        std::cout << "No roughness map found for texture ID: " << textureID << std::endl;
+    }
+
+    // Load a roughness map with a custom base name
+// Continue the loadRoughnessMapWithName method
+    void loadRoughnessMapWithName(int textureID, const std::string& baseName) {
+        // Default to no roughness map
+        hasRoughnessMap[textureID] = false;
+
+        // Try different file extensions for roughness map
+        std::string extensions[] = {".png", ".jpg", ".jpeg"};
+
+        for (const auto& ext : extensions) {
+            // Construct the filename with _R suffix
+            std::string filename = "textures/" + baseName + "_R" + ext;
+
+            // Load the texture
+            unsigned int textureHandle;
+            glGenTextures(1, &textureHandle);
+
+            int width, height, nrChannels;
+            unsigned char* data = stbi_load(filename.c_str(), &width, &height, &nrChannels, 0);
+            if (data) {
+                GLenum format;
+                if (nrChannels == 1)
+                    format = GL_RED;
+                else if (nrChannels == 3)
+                    format = GL_RGB;
+                else if (nrChannels == 4)
+                    format = GL_RGBA;
+
+                glBindTexture(GL_TEXTURE_2D, textureHandle);
+                glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+                glGenerateMipmap(GL_TEXTURE_2D);
+
+                // Set texture parameters
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+                // Store roughness map in the map
+                roughnessMaps[textureID] = textureHandle;
+                hasRoughnessMap[textureID] = true;
+
+                std::cout << "Loaded roughness map: " << filename << std::endl;
+                stbi_image_free(data);
+                return; // Exit once we found a valid roughness map
+            }
+            if (data) stbi_image_free(data); // Free data even if loading failed
+        }
+
+        std::cout << "No roughness map found for base name: " << baseName << std::endl;
+    }
+
+    // Bind textures with normal map and roughness map support
     void bindTexture(int textureID) {
         // If the texture doesn't exist yet, try to load it
         if (textures.find(textureID) == textures.end()) {
@@ -866,8 +1153,8 @@ public:
         if (textures.find(textureID) != textures.end() && textures[textureID] != 0) {
             glBindTexture(GL_TEXTURE_2D, textures[textureID]);
         } else {
-            // Bind a default texture or do nothing
-            //std::cout << "No color texture found for ID: " << textureID << std::endl;
+            // Unbind if no texture
+            glBindTexture(GL_TEXTURE_2D, 0);
         }
 
         // Bind the normal map to texture unit 1 if available
@@ -879,12 +1166,27 @@ public:
             glBindTexture(GL_TEXTURE_2D, 0);
         }
 
+        // Bind the roughness map to texture unit 2 if available
+        glActiveTexture(GL_TEXTURE2);
+        if (hasRoughnessMap[textureID]) {
+            glBindTexture(GL_TEXTURE_2D, roughnessMaps[textureID]);
+        } else {
+            // Unbind if no roughness map
+            glBindTexture(GL_TEXTURE_2D, 0);
+        }
+
         // Reset active texture
         glActiveTexture(GL_TEXTURE0);
     }
 
+    // Check if a normal map exists for a specific texture
     bool hasNormalMapForTexture(int textureID) {
         return hasNormalMap[textureID];
+    }
+
+    // Check if a roughness map exists for a specific texture
+    bool hasRoughnessMapForTexture(int textureID) {
+        return hasRoughnessMap[textureID];
     }
 
     // Preload all textures needed for a map
@@ -901,7 +1203,7 @@ public:
             }
         }
 
-        // Load each unique texture and its normal map if available
+        // Load each unique texture, normal map, and roughness map if available
         for (int texID : uniqueTextureIDs) {
             loadTexture(texID);
         }
@@ -1292,6 +1594,18 @@ void processInput(GLFWwindow* window) {
     } else {
         gKeyPressed = false;
     }
+        // Add the F key toggle for flashlight
+        static bool fKeyPressed = false;
+        if (glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS) {
+            if (!fKeyPressed) {
+                flashlightOn = !flashlightOn;
+                std::cout << "Flashlight " << (flashlightOn ? "on" : "off") << std::endl;
+                fKeyPressed = true;
+            }
+        } else {
+            fKeyPressed = false;
+        }
+
 }
 
 void renderGrid(Shader& shader, const Map& map) {
@@ -1401,34 +1715,32 @@ void createShaderFiles() {
         vShader << "layout (location = 2) in vec2 aTexCoord;\n";
         vShader << "layout (location = 3) in vec3 aTangent;\n";
         vShader << "layout (location = 4) in vec3 aBitangent;\n\n";
-
         vShader << "out vec3 FragPos;\n";
         vShader << "out vec3 Normal;\n";
         vShader << "out vec2 TexCoord;\n";
         vShader << "out mat3 TBN;\n\n";
-
         vShader << "uniform mat4 model;\n";
         vShader << "uniform mat4 view;\n";
-        vShader << "uniform mat4 projection;\n\n";
-
+        vShader << "uniform mat4 projection;\n";
+        // Add texture scale uniform
+        vShader << "uniform vec2 textureScale = vec2(1.0, 1.0);\n\n";
         vShader << "void main()\n";
         vShader << "{\n";
         vShader << "    FragPos = vec3(model * vec4(aPos, 1.0));\n";
         vShader << "    Normal = mat3(transpose(inverse(model))) * aNormal;\n";
-        vShader << "    TexCoord = aTexCoord;\n";
-
+        // Modify texture coordinate calculation to use scale
+        vShader << "    TexCoord = aTexCoord * textureScale;\n";
         vShader << "    // Calculate TBN matrix for normal mapping\n";
         vShader << "    vec3 T = normalize(mat3(model) * aTangent);\n";
         vShader << "    vec3 B = normalize(mat3(model) * aBitangent);\n";
         vShader << "    vec3 N = normalize(mat3(model) * aNormal);\n";
         vShader << "    TBN = mat3(T, B, N);\n";
-
         vShader << "    gl_Position = projection * view * vec4(FragPos, 1.0);\n";
         vShader << "}\n";
         vShader.close();
     }
 
-    // Update fragment shader to support normal mapping
+    // Update fragment shader to support normal mapping, roughness mapping, and flashlight
     std::ofstream fShader("shader.fs");
     if (fShader.is_open()) {
         fShader << "#version 330 core\n";
@@ -1444,10 +1756,21 @@ void createShaderFiles() {
         fShader << "uniform vec3 objectColor;\n";
         fShader << "uniform sampler2D wallTexture;\n";
         fShader << "uniform sampler2D normalMap;\n";
+        fShader << "uniform sampler2D roughnessMap;\n";
         fShader << "uniform bool useTexture;\n";
-        fShader << "uniform bool useNormalMap;\n\n";
+        fShader << "uniform bool useNormalMap;\n";
+        fShader << "uniform bool useRoughnessMap;\n";
         fShader << "uniform sampler2D texture_diffuse1;\n";
-        fShader << "uniform int textureType;\n";  // Add this line
+        fShader << "uniform int textureType;\n";
+
+        // Flashlight uniforms
+        fShader << "uniform bool flashlightOn;\n";
+        fShader << "uniform vec3 viewPos;\n";
+        fShader << "uniform vec3 flashlightPos;\n";
+        fShader << "uniform vec3 flashlightDir;\n";
+        fShader << "uniform float flashlightCutoff;\n";
+        fShader << "uniform float flashlightOuterCutoff;\n";
+        fShader << "uniform float flashlightIntensity;\n\n";
 
         fShader << "void main()\n";
         fShader << "{\n";
@@ -1465,24 +1788,55 @@ void createShaderFiles() {
         fShader << "        norm = normalize(Normal);\n";
         fShader << "    }\n\n";
 
-        fShader << "    // Diffuse\n";
+        fShader << "    // Get roughness from roughness map if available\n";
+        fShader << "    float roughness = 1.0;\n";
+        fShader << "    if(useRoughnessMap) {\n";
+        fShader << "        roughness = texture(roughnessMap, TexCoord).r; // Assuming single channel\n";
+        fShader << "    }\n\n";
+
+        fShader << "    // Diffuse from global light\n";
         fShader << "    vec3 lightDir = normalize(lightPos - FragPos);\n";
         fShader << "    float diff = max(dot(norm, lightDir), 0.0);\n";
-        fShader << "    vec3 diffuse = diff * lightColor;\n\n";
+        fShader << "    // Adjust diffuse with roughness\n";
+        fShader << "    vec3 diffuse = diff * lightColor * roughness;\n\n";
 
-         // In the fragment shader creation part:
+        fShader << "    // Specular (Blinn-Phong)\n";
+        fShader << "    vec3 viewDir = normalize(viewPos - FragPos);\n";
+        fShader << "    vec3 halfwayDir = normalize(lightDir + viewDir);\n";
+        fShader << "    float spec = pow(max(dot(norm, halfwayDir), 0.0), 32.0);\n";
+        fShader << "    // Adjust specular with roughness (less specular with higher roughness)\n";
+        fShader << "    vec3 specular = spec * lightColor * (1.0 - roughness);\n\n";
+
+        fShader << "    // Flashlight (Spotlight)\n";
+        fShader << "    vec3 flashlightDiffuse = vec3(0.0);\n";
+        fShader << "    vec3 flashlightSpecular = vec3(0.0);\n";
+        fShader << "    if(flashlightOn) {\n";
+        fShader << "        vec3 flashDir = normalize(flashlightPos - FragPos);\n";
+        fShader << "        float theta = dot(flashDir, normalize(-flashlightDir));\n";
+        fShader << "        float epsilon = flashlightCutoff - flashlightOuterCutoff;\n";
+        fShader << "        float intensity = clamp((theta - flashlightOuterCutoff) / epsilon, 0.0, 1.0);\n";
+        fShader << "        \n";
+        fShader << "        if(theta > flashlightOuterCutoff) {\n";
+        fShader << "            float flashDiff = max(dot(norm, flashDir), 0.0);\n";
+        fShader << "            float flashSpec = pow(max(dot(norm, normalize(flashDir + viewDir)), 0.0), 32.0);\n";
+        fShader << "            \n";
+        fShader << "            flashlightDiffuse = flashDiff * lightColor * intensity * flashlightIntensity * roughness;\n";
+        fShader << "            flashlightSpecular = flashSpec * lightColor * intensity * flashlightIntensity * (1.0 - roughness);\n";
+        fShader << "        }\n";
+        fShader << "    }\n\n";
+
         fShader << "    // Result\n";
         fShader << "    vec3 result;\n";
         fShader << "    if (useTexture) {\n";
         fShader << "        vec3 texColor;\n";
-        fShader << "        if (textureType == 1) {\n";  // Model texture
+        fShader << "        if (textureType == 1) { // Model texture\n";
         fShader << "            texColor = texture(texture_diffuse1, TexCoord).rgb;\n";
-        fShader << "        } else {\n";  // Wall texture
+        fShader << "        } else { // Wall texture\n";
         fShader << "            texColor = texture(wallTexture, TexCoord).rgb;\n";
         fShader << "        }\n";
-        fShader << "        result = (ambient + diffuse) * texColor;\n";
-        fShader << "    } else {\n";  // This else clause was missing
-        fShader << "        result = (ambient + diffuse) * objectColor;\n";
+        fShader << "        result = (ambient + diffuse + specular + flashlightDiffuse + flashlightSpecular) * texColor;\n";
+        fShader << "    } else {\n";
+        fShader << "        result = (ambient + diffuse + specular + flashlightDiffuse + flashlightSpecular) * objectColor;\n";
         fShader << "    }\n\n";
 
         fShader << "    FragColor = vec4(result, 1.0);\n";
@@ -1548,11 +1902,16 @@ glEnable(GL_DEPTH_TEST);
 
 
     // Initialize camera
-    Camera camera(glm::vec3(1.5f, playerHeight, 1.5f));
+    Camera camera(glm::vec3(2.5f, playerHeight, 2.5f));
 
 
-    //Textures
+    //Textures handling manager
     TextureManager textureManager;
+
+    //Floor Textures
+    // Load floor texture (using ID 100 to avoid conflicts with wall textures)
+        textureManager.loadTextureWithName(100, "floor_1");
+
     // Load map
     Map map("map.txt");
 
@@ -1572,125 +1931,158 @@ glEnable(GL_DEPTH_TEST);
     //Models
     Model cakeModel("C:/Programs/SDL3_projects/GateWay3D/GateWay3D/Models/Cake/scene.gltf");
 
-    // Main loop
-    while (!glfwWindowShouldClose(window)) {
-        // Per-frame time logic
-        float currentFrame = glfwGetTime();
-        deltaTime = currentFrame - lastFrame;
-        lastFrame = currentFrame;
 
-        // Process input
-        processInput(window);
-        processMovement(camera, map, deltaTime);
+                // Main loop
+                while (!glfwWindowShouldClose(window)) {
+                    // Per-frame time logic
+                    float currentFrame = glfwGetTime();
+                    deltaTime = currentFrame - lastFrame;
+                    lastFrame = currentFrame;
 
-        // Update camera orientation based on mouse movement
-        camera.updateCameraVectors();
+                    // Process input
+                    processInput(window);
+                    processMovement(camera, map, deltaTime);
 
-        // Render
-        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                    // Update camera orientation based on mouse movement
+                    camera.updateCameraVectors();
 
-        // Activate shader
-        shader.use();
+                    // Render
+                    glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+                    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // Set uniforms
-        glm::mat4 projection = glm::perspective(glm::radians(fov), (float)SCREEN_WIDTH / (float)SCREEN_HEIGHT, 0.1f, 100.0f);
-        glm::mat4 view = camera.GetViewMatrix();
-        shader.setMat4("projection", projection);
-        shader.setMat4("view", view);
+                    // Activate shader
+                    shader.use();
 
-        // Set lighting
-        shader.setVec3("lightPos", glm::vec3(map.width * 0.5f, 5.0f, map.height * 0.5f));
-        shader.setVec3("lightColor", glm::vec3(1.0f, 1.0f, 1.0f));
+                    // Set uniform for roughness map
+                    shader.setInt("roughnessMap", 2);  // Roughness map on texture unit 2
 
-        // Render the map
-        for (int z = 0; z < map.height; ++z) {
-            for (int x = 0; x < map.width; ++x) {
-                if (map.grid[z][x] == 1) {  // Wall
-                    int texID = map.getTextureID(x, z);
+                    // Set uniforms
+                    glm::mat4 projection = glm::perspective(glm::radians(fov), (float)SCREEN_WIDTH / (float)SCREEN_HEIGHT, 0.1f, 100.0f);
+                    glm::mat4 view = camera.GetViewMatrix();
+                    shader.setMat4("projection", projection);
+                    shader.setMat4("view", view);
 
-                    // This will bind both the color texture and normal map if available
-                    textureManager.bindTexture(texID);
+                    // Set lighting
+                    shader.setVec3("lightPos", glm::vec3(map.width * 0.5f, 3.0f, map.height * 0.5f));
+                    shader.setVec3("lightColor", glm::vec3(1.0f, 1.0f, 1.0f));
 
-                    shader.setBool("useTexture", texID > 0);
-                    // Only use normal map if both available AND the toggle is on
-                    shader.setBool("useNormalMap", useNormalMaps && textureManager.hasNormalMapForTexture(texID));
+                    // Flashlight setup (as in your original code)
+                    float flashlightCutoffCos = cos(glm::radians(flashlightCutoff));
+                    float flashlightOuterCutoffCos = cos(glm::radians(flashlightOuterCutoff));
 
-                    if (texID == 0) {
-                        // Fallback to color for walls without texture
-                        shader.setVec3("objectColor", glm::vec3(0.7f, 0.7f, 0.7f));
+                    // Set flashlight uniforms
+                    shader.setBool("flashlightOn", flashlightOn);
+                    shader.setVec3("viewPos", camera.Position);
+                    shader.setVec3("flashlightPos", camera.Position);
+                    shader.setVec3("flashlightDir", camera.Front);
+                    shader.setFloat("flashlightCutoff", flashlightCutoffCos);
+                    shader.setFloat("flashlightOuterCutoff", flashlightOuterCutoffCos);
+                    shader.setFloat("flashlightIntensity", flashlightIntensity);
+
+                    // Render the map
+                    for (int z = 0; z < map.height; ++z) {
+                        for (int x = 0; x < map.width; ++x) {
+                            if (map.grid[z][x] == 1) {  // Wall
+                                int texID = map.getTextureID(x, z);
+                                //shader.setVec2("textureScale", glm::vec2(1.0f, 1.0f));  // Default texture scaling
+
+                                    // Determine the height based on whether it's an object
+                                    float wallHeight = textureManager.isObject(texID) ? 2.0f : WALL_HEIGHT;
+
+                                    // Set texture scaling appropriately
+                                    float textureYScale = wallHeight / 2.0f;
+                                    shader.setVec2("textureScale", glm::vec2(1.0f, textureYScale));
+                                // This will bind both the color texture, normal map, and roughness map if available
+                                textureManager.bindTexture(texID);
+
+                                shader.setBool("useTexture", texID > 0);
+                                // Only use normal map if both available AND the toggle is on
+                                shader.setBool("useNormalMap", useNormalMaps && textureManager.hasNormalMapForTexture(texID));
+                                // Use roughness map if available
+                                shader.setBool("useRoughnessMap", textureManager.hasRoughnessMapForTexture(texID));
+
+                                if (texID == 0) {
+                                    // Fallback to color for walls without texture
+                                    shader.setVec3("objectColor", glm::vec3(0.7f, 0.7f, 0.7f));
+                                }
+
+                                   // Create model matrix with appropriate height
+                                    glm::mat4 model = glm::mat4(1.0f);
+                                    model = glm::translate(model, glm::vec3(
+                                        (x + 0.5f) * CELL_SIZE,
+                                        wallHeight * 0.5f,  // Center Y based on actual height
+                                        (z + 0.5f) * CELL_SIZE
+                                    ));
+                                    model = glm::scale(model, glm::vec3(CELL_SIZE, wallHeight, CELL_SIZE));
+                                    shader.setMat4("model", model);
+
+                                cubeModel.render();
+                            }
+                        }
                     }
 
-                    glm::mat4 model = glm::mat4(1.0f);
+                    // Render floor
+                    glm::mat4 floorModel = glm::mat4(1.0f);
+                    floorModel = glm::translate(floorModel, glm::vec3(map.width * CELL_SIZE * 0.5f, 0.0f, map.height * CELL_SIZE * 0.5f));
+                    floorModel = glm::scale(floorModel, glm::vec3(map.width * CELL_SIZE, 0.1f, map.height * CELL_SIZE));
+                    shader.setMat4("model", floorModel);
 
-       //************ THIS CAUSED THE COLLISION DETECTION TO NOT WORK, WE HAD 0,5 diffrence with the game world grid ***********
-              // Translate to the center of the grid cell, not the corner
-                    model = glm::translate(model, glm::vec3(
-                        (x + 0.5f) * CELL_SIZE,
-                        WALL_HEIGHT * 0.5f,
-                        (z + 0.5f) * CELL_SIZE
-                    ));
-                    model = glm::scale(model, glm::vec3(CELL_SIZE, WALL_HEIGHT, CELL_SIZE));
-                    shader.setMat4("model", model);
+                    // Set texture scaling
+                    shader.setVec2("textureScale", glm::vec2(4.0f, 4.0f));  // Repeat texture 4 times in both directions
 
+                    // Bind floor texture
+                    textureManager.bindTexture(100);  // Use ID 100 for floor
+                    shader.setBool("useTexture", true);
+                    shader.setInt("textureType", 0);  // Use the same path as wall textures
+                    shader.setBool("useNormalMap", useNormalMaps && textureManager.hasNormalMapForTexture(100));
+                    shader.setBool("useRoughnessMap", textureManager.hasRoughnessMapForTexture(100));
 
                     cubeModel.render();
+
+                    // Render ceiling
+                    glm::mat4 ceilingModel = glm::mat4(1.0f);
+                    ceilingModel = glm::translate(ceilingModel, glm::vec3(map.width * CELL_SIZE * 0.5f, WALL_HEIGHT, map.height * CELL_SIZE * 0.5f));
+                    ceilingModel = glm::scale(ceilingModel, glm::vec3(map.width * CELL_SIZE, 0.1f, map.height * CELL_SIZE));
+                    shader.setMat4("model", ceilingModel);
+
+                    // Load and bind ceiling texture
+                    textureManager.loadTextureWithName(101, "ceiling_1");
+                    textureManager.bindTexture(101);
+                    shader.setBool("useTexture", true);
+                    shader.setInt("textureType", 0);  // Use the same path as wall textures
+                    shader.setBool("useNormalMap", useNormalMaps && textureManager.hasNormalMapForTexture(101));
+                    shader.setBool("useRoughnessMap", textureManager.hasRoughnessMapForTexture(101));
+
+                    // Set texture scaling
+                    shader.setVec2("textureScale", glm::vec2(4.0f, 4.0f));
+
+                    cubeModel.render();
+
+                    // Render cake model (as in your original code)
+                    glm::mat4 cakeModelMatrix = glm::mat4(1.0f);
+                    float posX = 5.0f;
+                    float posY = 0.5f;
+                    float posZ = 7.0f;
+
+                    cakeModelMatrix = glm::translate(cakeModelMatrix, glm::vec3(posX, posY, posZ));
+                    float rotationAngle = currentFrame * glm::radians(45.0f); // Rotate 45 degrees per second
+                    cakeModelMatrix = glm::rotate(cakeModelMatrix, rotationAngle, glm::vec3(0.0f, 1.0f, 0.0f));
+                    cakeModelMatrix = glm::scale(cakeModelMatrix, glm::vec3(0.1f, 0.1f, 0.1f));
+
+                    shader.setMat4("model", cakeModelMatrix);
+                    shader.setBool("useTexture", true);
+                    shader.setInt("textureType", 1);  // Signal it's a model texture
+                    cakeModel.Draw(shader);
+
+                    // Render grid if enabled
+                    if (showGrid) {
+                        renderGrid(shader, map);
+                    }
+
+                    // Swap buffers and poll IO events
+                    glfwSwapBuffers(window);
+                    glfwPollEvents();
                 }
-            }
-        }
-
-        // Render floor
-        glm::mat4 floorModel = glm::mat4(1.0f);
-        floorModel = glm::translate(floorModel, glm::vec3(map.width * CELL_SIZE * 0.5f, 0.0f, map.height * CELL_SIZE * 0.5f));
-        floorModel = glm::scale(floorModel, glm::vec3(map.width * CELL_SIZE, 0.1f, map.height * CELL_SIZE));
-        shader.setMat4("model", floorModel);
-        shader.setVec3("objectColor", glm::vec3(0.3f, 0.3f, 0.3f)); // Dark gray floor
-        cubeModel.render();
-
-        // Render ceiling
-        glm::mat4 ceilingModel = glm::mat4(1.0f);
-        ceilingModel = glm::translate(ceilingModel, glm::vec3(map.width * CELL_SIZE * 0.5f, WALL_HEIGHT, map.height * CELL_SIZE * 0.5f));
-        ceilingModel = glm::scale(ceilingModel, glm::vec3(map.width * CELL_SIZE, 0.1f, map.height * CELL_SIZE));
-        shader.setMat4("model", ceilingModel);
-        shader.setVec3("objectColor", glm::vec3(0.5f, 0.5f, 0.6f)); // Light blue-gray ceiling
-        cubeModel.render();
-
-        // Render cake model
-        // In your main rendering loop, where you render the cake:
-                glm::mat4 cakeModelMatrix = glm::mat4(1.0f);
-
-                // Change these values to move the cake to a different position
-                float posX = 5.0f;  // X position (specific cell in your map)
-                float posY = 0.5f;  // Y position (height above floor)
-                float posZ = 7.0f;  // Z position (specific cell in your map)
-
-                cakeModelMatrix = glm::translate(cakeModelMatrix, glm::vec3(posX, posY, posZ));
-
-                // You can also adjust rotation if desired
-                float rotationAngle = glm::radians(45.0f);  // 45 degrees rotation around Y axis
-                cakeModelMatrix = glm::rotate(cakeModelMatrix, rotationAngle, glm::vec3(0.0f, 1.0f, 0.0f));
-
-                // Keep your existing scale
-                cakeModelMatrix = glm::scale(cakeModelMatrix, glm::vec3(0.1f, 0.1f, 0.1f));
-
-                shader.setMat4("model", cakeModelMatrix);
-                // Before drawing the cake:
-                shader.setBool("useTexture", true);
-                shader.setInt("textureType", 1);  // Signal it's a model texture
-                cakeModel.Draw(shader);
-
-        // UNCOMMENT TO SEE line to grid being rendered to the game world
-                if (showGrid) {
-                    renderGrid(shader, map);
-                }
-
-         // *** UNCOMMENT TO SEE line to render the debug circle
-        //renderDebugCircle(shader, camera, playerWidth * 1.6f); // Using the same safety radius as in collideWithMap
-
-        // Swap buffers and poll IO events
-        glfwSwapBuffers(window);
-        glfwPollEvents();
-    }
 
     // Cleanup
     glfwTerminate();

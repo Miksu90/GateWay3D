@@ -13,12 +13,13 @@ out mat3 TBN;
 uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
+uniform vec2 textureScale = vec2(1.0, 1.0);
 
 void main()
 {
     FragPos = vec3(model * vec4(aPos, 1.0));
     Normal = mat3(transpose(inverse(model))) * aNormal;
-    TexCoord = aTexCoord;
+    TexCoord = aTexCoord * textureScale;
     // Calculate TBN matrix for normal mapping
     vec3 T = normalize(mat3(model) * aTangent);
     vec3 B = normalize(mat3(model) * aBitangent);
