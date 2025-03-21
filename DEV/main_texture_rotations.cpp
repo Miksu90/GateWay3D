@@ -1723,13 +1723,37 @@ void createShaderFiles() {
         vShader << "uniform mat4 view;\n";
         vShader << "uniform mat4 projection;\n";
         // Add texture scale uniform
-        vShader << "uniform vec2 textureScale = vec2(1.0, 1.0);\n\n";
+        vShader << "uniform vec2 textureScale = vec2(1.0, 1.0);\n";
+        // Add texture rotation uniform
+        vShader << "uniform float textureRotation = 0.0;\n\n";
         vShader << "void main()\n";
         vShader << "{\n";
         vShader << "    FragPos = vec3(model * vec4(aPos, 1.0));\n";
         vShader << "    Normal = mat3(transpose(inverse(model))) * aNormal;\n";
-        // Modify texture coordinate calculation to use scale
-        vShader << "    TexCoord = aTexCoord * textureScale;\n";
+
+        // Add rotation to texture coordinates
+        vShader << "    // Apply rotation to texture coordinates\n";
+        vShader << "    vec2 rotatedTexCoord = aTexCoord;\n";
+        vShader << "    if (textureRotation != 0.0) {\n";
+        vShader << "        // Rotate around center (0.5, 0.5)\n";
+        vShader << "        vec2 center = vec2(0.5, 0.5);\n";
+        vShader << "        rotatedTexCoord -= center;\n";
+        vShader << "        \n";
+        vShader << "        // Apply rotation matrix\n";
+        vShader << "        float s = sin(textureRotation);\n";
+        vShader << "        float c = cos(textureRotation);\n";
+        vShader << "        rotatedTexCoord = vec2(\n";
+        vShader << "            rotatedTexCoord.x * c - rotatedTexCoord.y * s,\n";
+        vShader << "            rotatedTexCoord.x * s + rotatedTexCoord.y * c\n";
+        vShader << "        );\n";
+        vShader << "        \n";
+        vShader << "        // Move back from center\n";
+        vShader << "        rotatedTexCoord += center;\n";
+        vShader << "    }\n";
+        vShader << "    \n";
+        vShader << "    // Apply scale after rotation\n";
+        vShader << "    TexCoord = rotatedTexCoord * textureScale;\n";
+
         vShader << "    // Calculate TBN matrix for normal mapping\n";
         vShader << "    vec3 T = normalize(mat3(model) * aTangent);\n";
         vShader << "    vec3 B = normalize(mat3(model) * aBitangent);\n";
@@ -1740,7 +1764,7 @@ void createShaderFiles() {
         vShader.close();
     }
 
-    // Update fragment shader to support normal mapping, roughness mapping, and flashlight
+    // The fragment shader stays the same as you currently have it
     std::ofstream fShader("shader.fs");
     if (fShader.is_open()) {
         fShader << "#version 330 core\n";
@@ -1963,7 +1987,7 @@ glEnable(GL_DEPTH_TEST);
                     shader.setMat4("view", view);
 
                     // Set lighting
-                    shader.setVec3("lightPos", glm::vec3(map.width * 0.5f, 3.0f, map.height * 0.5f));
+                    shader.setVec3("lightPos", glm::vec3(map.width * 0.4f, 4.0f, map.height * 0.5f));
                     shader.setVec3("lightColor", glm::vec3(1.0f, 1.0f, 1.0f));
 
                     // Flashlight setup (as in your original code)
@@ -2004,6 +2028,12 @@ glEnable(GL_DEPTH_TEST);
                                 if (texID == 0) {
                                     // Fallback to color for walls without texture
                                     shader.setVec3("objectColor", glm::vec3(0.7f, 0.7f, 0.7f));
+                                }
+                                // In your rendering loop where you're setting up textures before rendering an object
+                                if (texID == 5) { // For object_5 specifically
+                                    shader.setFloat("textureRotation", glm::radians(-90.0f));
+                                } else {
+                                    shader.setFloat("textureRotation", 0.0f);
                                 }
 
                                    // Create model matrix with appropriate height
@@ -2060,9 +2090,9 @@ glEnable(GL_DEPTH_TEST);
 
                     // Render cake model (as in your original code)
                     glm::mat4 cakeModelMatrix = glm::mat4(1.0f);
-                    float posX = 5.0f;
+                    float posX = 12.0f;
                     float posY = 0.5f;
-                    float posZ = 7.0f;
+                    float posZ = 10.0f;
 
                     cakeModelMatrix = glm::translate(cakeModelMatrix, glm::vec3(posX, posY, posZ));
                     float rotationAngle = currentFrame * glm::radians(45.0f); // Rotate 45 degrees per second

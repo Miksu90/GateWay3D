@@ -14,12 +14,33 @@ uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
 uniform vec2 textureScale = vec2(1.0, 1.0);
+uniform float textureRotation = 0.0;
 
 void main()
 {
     FragPos = vec3(model * vec4(aPos, 1.0));
     Normal = mat3(transpose(inverse(model))) * aNormal;
-    TexCoord = aTexCoord * textureScale;
+    // Apply rotation to texture coordinates
+    vec2 rotatedTexCoord = aTexCoord;
+    if (textureRotation != 0.0) {
+        // Rotate around center (0.5, 0.5)
+        vec2 center = vec2(0.5, 0.5);
+        rotatedTexCoord -= center;
+        
+        // Apply rotation matrix
+        float s = sin(textureRotation);
+        float c = cos(textureRotation);
+        rotatedTexCoord = vec2(
+            rotatedTexCoord.x * c - rotatedTexCoord.y * s,
+            rotatedTexCoord.x * s + rotatedTexCoord.y * c
+        );
+        
+        // Move back from center
+        rotatedTexCoord += center;
+    }
+    
+    // Apply scale after rotation
+    TexCoord = rotatedTexCoord * textureScale;
     // Calculate TBN matrix for normal mapping
     vec3 T = normalize(mat3(model) * aTangent);
     vec3 B = normalize(mat3(model) * aBitangent);

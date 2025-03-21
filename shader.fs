@@ -87,6 +87,7 @@ void main()
         } else { // Wall texture
             texColor = texture(wallTexture, TexCoord).rgb;
         }
+        // Apply lighting calculations to the texture color for both models and walls
         result = (ambient + diffuse + specular + flashlightDiffuse + flashlightSpecular) * texColor;
     } else {
         result = (ambient + diffuse + specular + flashlightDiffuse + flashlightSpecular) * objectColor;
