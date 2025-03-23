@@ -50,9 +50,6 @@
 			<Add option="-Wall" />
 			<Add option="-fexceptions" />
 		</Compiler>
-		<Unit filename="glad.c">
-			<Option compilerVar="CC" />
-		</Unit>
 		<Unit filename="main.cpp" />
 		<Unit filename="map.txt" />
 		<Unit filename="shader.fs" />

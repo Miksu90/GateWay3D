@@ -29,6 +29,9 @@
 const unsigned int SCREEN_WIDTH = 800;
 const unsigned int SCREEN_HEIGHT = 600;
 
+// Fullscreen tracking
+bool isFullscreen = false;
+
 // Camera settings
 float yaw = 0.0f;    // Facing  direction initially
 float pitch = 0.0f;    // Looking straight ahead
@@ -1606,6 +1609,32 @@ void processInput(GLFWwindow* window) {
             fKeyPressed = false;
         }
 
+        // Add the L key toggle for fullscreen
+static bool lKeyPressed = false;
+if (glfwGetKey(window, GLFW_KEY_L) == GLFW_PRESS) {
+    if (!lKeyPressed) {
+        isFullscreen = !isFullscreen;
+
+        if (isFullscreen) {
+            // Get primary monitor
+            GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+            const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+
+            // Switch to fullscreen
+            glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+            std::cout << "Switched to fullscreen mode" << std::endl;
+        } else {
+            // Switch back to windowed mode
+            glfwSetWindowMonitor(window, NULL, 100, 100, SCREEN_WIDTH, SCREEN_HEIGHT, 0);
+            std::cout << "Switched to windowed mode" << std::endl;
+        }
+
+        lKeyPressed = true;
+    }
+} else {
+    lKeyPressed = false;
+}
+
 }
 
 void renderGrid(Shader& shader, const Map& map) {
@@ -1955,7 +1984,8 @@ glEnable(GL_DEPTH_TEST);
     CubeModel cubeModel;
 
     //Models
-    Model cakeModel("C:/Programs/SDL3_projects/GateWay3D/GateWay3D/Models/Cake/scene.gltf");
+  Model cakeModel("Models/Cake/scene.gltf");
+
 
 
                 // Main loop
