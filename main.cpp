@@ -63,6 +63,44 @@ float flashlightCutoff = 12.5f;  // Inner cone angle in degrees
 float flashlightOuterCutoff = 17.5f;  // Outer cone angle in degrees
 float flashlightIntensity = 1.0f;  // Brightness multiplier
 
+
+// Controller settings
+bool useController = false;
+float controllerDeadzone = 0.15f;
+float controllerLookSensitivity = 1.5f;
+int controllerID = -1;
+
+
+// Texture rotation settings - texID to rotation angle (in degrees)
+std::map<int, float> textureRotations = {
+    {5, 90.0f},   // Rotate texture 5 by -90 degrees
+    {30, 90.0f},
+    {31, 90.0f},
+    {32, 90.0f},
+    {33, 90.0f},
+    {34, 90.0f},
+    {36, 90.0f},
+    {37, 90.0f},
+    {39, 90.0f},
+    // Add more textures as needed
+};
+
+
+// Light specific to a room or area
+struct AreaLight {
+    glm::vec3 position;
+    glm::vec3 color;
+    float intensity;
+    float radius;  // How far the light reaches
+    bool active;   // If the light is enabled
+};
+
+
+std::vector<AreaLight> areaLights;
+
+
+
+// You can add more lights here as needed
 // Shader class to handle shaders
 class Shader {
 public:
@@ -223,7 +261,7 @@ public:
         loadFromFile(filename);
     }
 
-   void loadFromFile(const std::string& filename) {
+void loadFromFile(const std::string& filename) {
     std::ifstream file(filename);
     if (!file.is_open()) {
         std::cerr << "Failed to open map file: " << filename << std::endl;
@@ -231,30 +269,84 @@ public:
     }
 
     std::string line;
+    std::map<char, int> legendMap;
+    bool readingLegend = false;
+    bool readingMap = false;
     height = 0;
     width = 0;
 
     grid.clear();
     textureIDs.clear();
 
+    // First pass: read the legend
     while (std::getline(file, line)) {
+        // Trim whitespace
+        line.erase(0, line.find_first_not_of(" \t"));
+        if (line.empty()) continue;
+
+        if (line == "LEGEND:") {
+            readingLegend = true;
+            continue;
+        } else if (line == "MAP:") {
+            readingLegend = false;
+            readingMap = true;
+            continue;
+        }
+
+        if (readingLegend) {
+            // Parse legend line: format is "C=ID" where C is character and ID is texture ID
+            if (line.length() >= 3 && line[1] == '=') {
+                char symbol = line[0];
+                int texID = std::stoi(line.substr(2));
+                legendMap[symbol] = texID;
+                std::cout << "Legend: '" << symbol << "' = Texture ID " << texID << std::endl;
+            }
+        }
+    }
+
+    // Reset file for second pass
+    file.clear();
+    file.seekg(0);
+    readingMap = false;
+
+    // Second pass: read the actual map
+    while (std::getline(file, line)) {
+        if (line == "MAP:") {
+            readingMap = true;
+            continue;
+        }
+
+        if (!readingMap) continue;
+
+        // Skip empty lines
+        if (line.empty()) continue;
+
         std::vector<int> row;
         std::vector<int> texRow;
+
         for (char c : line) {
             if (c == '#') {
                 row.push_back(1);  // Wall
                 texRow.push_back(0);  // Default texture ID
-            } else if (c >= '1' && c <= '9') {
-                row.push_back(1);  // Wall
-                texRow.push_back(c - '0');  // Texture ID from 1-9
-            } else if (c == '.') {
+            }
+            else if (c == '.') {
                 row.push_back(0);  // Empty space
                 texRow.push_back(0);  // No texture
-            } else {
+            }
+            else if (legendMap.find(c) != legendMap.end()) {
+                row.push_back(1);  // Wall
+                texRow.push_back(legendMap[c]);  // Texture ID from legend
+            }
+            else if (isdigit(c)) {
+                row.push_back(1);  // Wall
+                texRow.push_back(c - '0');  // Legacy format: single-digit texture ID
+            }
+            else {
                 row.push_back(0);  // Default to empty
                 texRow.push_back(0);  // No texture
             }
         }
+
         if (row.size() > width) {
             width = row.size();
         }
@@ -263,7 +355,7 @@ public:
         height++;
     }
 
-    // Debug print the entire map grid
+    // Debug print
     std::cout << "Map Grid (Width: " << width << ", Height: " << height << "):" << std::endl;
     for (int z = 0; z < height; z++) {
         for (int x = 0; x < width; x++) {
@@ -305,55 +397,55 @@ public:
     CubeModel() {
         // Vertex data for a cube with proper texture orientation for each face
         // Format: position(3), normal(3), texcoord(2), tangent(3), bitangent(3)
-    float vertices[] = {
-        // Front face (negative Z)
-        -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
-         0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
-         0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
-         0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
-        -0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
-        -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
+            float vertices[] = {
+                // Front face (negative Z) - Swap U coordinates (0.0f↔1.0f)
+                -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
+                 0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
+                 0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
+                 0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
+                -0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
+                -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
 
-        // Back face (positive Z)
-        -0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f, 1.0f,        -1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
-         0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f, 1.0f,        -1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
-         0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f, 0.0f,        -1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
-         0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f, 0.0f,        -1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
-        -0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f, 0.0f,        -1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
-        -0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f, 1.0f,        -1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
+                // Back face (positive Z) - Keep as is, already correct
+                -0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f, 1.0f,        -1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
+                 0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f, 1.0f,        -1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
+                 0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f, 0.0f,        -1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
+                 0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f, 0.0f,        -1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
+                -0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f, 0.0f,        -1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
+                -0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f, 1.0f,        -1.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,
 
-        // Left face (negative X)
-        -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 0.0f,         0.0f, 0.0f, -1.0f,   0.0f, 1.0f, 0.0f,
-        -0.5f,  0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 0.0f,         0.0f, 0.0f, -1.0f,   0.0f, 1.0f, 0.0f,
-        -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 1.0f,         0.0f, 0.0f, -1.0f,   0.0f, 1.0f, 0.0f,
-        -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 1.0f,         0.0f, 0.0f, -1.0f,   0.0f, 1.0f, 0.0f,
-        -0.5f, -0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 1.0f,         0.0f, 0.0f, -1.0f,   0.0f, 1.0f, 0.0f,
-        -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 0.0f,         0.0f, 0.0f, -1.0f,   0.0f, 1.0f, 0.0f,
+                // Left face (negative X) - Swap U coordinates (0.0f↔1.0f)
+                -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 0.0f,         0.0f, 0.0f, -1.0f,   0.0f, 1.0f, 0.0f,
+                -0.5f,  0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 0.0f,         0.0f, 0.0f, -1.0f,   0.0f, 1.0f, 0.0f,
+                -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 1.0f,         0.0f, 0.0f, -1.0f,   0.0f, 1.0f, 0.0f,
+                -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 1.0f,         0.0f, 0.0f, -1.0f,   0.0f, 1.0f, 0.0f,
+                -0.5f, -0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 1.0f,         0.0f, 0.0f, -1.0f,   0.0f, 1.0f, 0.0f,
+                -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 0.0f,         0.0f, 0.0f, -1.0f,   0.0f, 1.0f, 0.0f,
 
-        // Right face (positive X)
-         0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f,         0.0f, 0.0f, 1.0f,    0.0f, 1.0f, 0.0f,
-         0.5f,  0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 0.0f,         0.0f, 0.0f, 1.0f,    0.0f, 1.0f, 0.0f,
-         0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 1.0f,         0.0f, 0.0f, 1.0f,    0.0f, 1.0f, 0.0f,
-         0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 1.0f,         0.0f, 0.0f, 1.0f,    0.0f, 1.0f, 0.0f,
-         0.5f, -0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f,         0.0f, 0.0f, 1.0f,    0.0f, 1.0f, 0.0f,
-         0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f,         0.0f, 0.0f, 1.0f,    0.0f, 1.0f, 0.0f,
+                // Right face (positive X) - Swap U coordinates (0.0f↔1.0f)
+                 0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 0.0f,         0.0f, 0.0f, 1.0f,    0.0f, 1.0f, 0.0f,
+                 0.5f,  0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f,         0.0f, 0.0f, 1.0f,    0.0f, 1.0f, 0.0f,
+                 0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f,         0.0f, 0.0f, 1.0f,    0.0f, 1.0f, 0.0f,
+                 0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f,         0.0f, 0.0f, 1.0f,    0.0f, 1.0f, 0.0f,
+                 0.5f, -0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 1.0f,         0.0f, 0.0f, 1.0f,    0.0f, 1.0f, 0.0f,
+                 0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 0.0f,         0.0f, 0.0f, 1.0f,    0.0f, 1.0f, 0.0f,
 
-        // Bottom face (negative Y)
-        -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, -1.0f,
-         0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, -1.0f,
-         0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, -1.0f,
-         0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, -1.0f,
-        -0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, -1.0f,
-        -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, -1.0f,
+                // Bottom face (negative Y) - Swap U coordinates (0.0f↔1.0f)
+                -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, -1.0f,
+                 0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, -1.0f,
+                 0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, -1.0f,
+                 0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, -1.0f,
+                -0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, -1.0f,
+                -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, -1.0f,
 
-        // Top face (positive Y)
-        -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, 1.0f,
-         0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, 1.0f,
-         0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, 1.0f,
-         0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, 1.0f,
-        -0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, 1.0f,
-        -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, 1.0f
-    };
+                // Top face (positive Y) - Swap U coordinates (0.0f↔1.0f)
+                -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, 1.0f,
+                 0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, 1.0f,
+                 0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, 1.0f,
+                 0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, 1.0f,
+                -0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 1.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, 1.0f,
+                -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 0.0f,         1.0f, 0.0f, 0.0f,    0.0f, 0.0f, 1.0f
+            };
 
         // Generate and bind the Vertex Array Object
         glGenVertexArrays(1, &VAO);
@@ -1257,6 +1349,24 @@ bool rayBoxIntersection(const glm::vec3& rayOrigin, const glm::vec3& rayDir,
     return tMax >= tMin && tMax >= 0.0f;
 }
 
+void detectControllers() {
+    controllerID = -1;
+    for (int i = GLFW_JOYSTICK_1; i <= GLFW_JOYSTICK_LAST; i++) {
+        if (glfwJoystickPresent(i) && glfwJoystickIsGamepad(i)) {
+            controllerID = i;
+            const char* name = glfwGetGamepadName(i);
+            std::cout << "Controller connected: " << name << std::endl;
+            useController = true;
+            break;
+        }
+    }
+
+    if (controllerID == -1) {
+        useController = false;
+        std::cout << "No controller detected" << std::endl;
+    }
+}
+
 // Swept sphere collision detection against a cell-based world
 bool sweptSphereCollision(const glm::vec3& start, const glm::vec3& end,
                           const Map& map, float radius, glm::vec3& adjustedEnd) {
@@ -1419,6 +1529,9 @@ bool collideWithMap(const glm::vec3& position, const Map& map, float radius) {
 }
 // Process movement with very small steps to prevent any chance of corner penetration
 void processMovement(Camera& camera, const Map& map, float deltaTime) {
+    // Skip keyboard movement if controller is active
+    if (useController) return;
+
     // Debug print for precise positioning
     int gridX = static_cast<int>(camera.Position.x / CELL_SIZE);
     int gridZ = static_cast<int>(camera.Position.z / CELL_SIZE);
@@ -1483,6 +1596,142 @@ void processMovement(Camera& camera, const Map& map, float deltaTime) {
             // If collision detected, minimize movement
             break;
         }
+    }
+}
+
+void processControllerInput(Camera& camera, const Map& map, float deltaTime) {
+    if (!useController || controllerID == -1) return;
+
+    GLFWgamepadstate state;
+    if (!glfwGetGamepadState(controllerID, &state)) return;
+
+    // Movement with left stick
+    float leftX = state.axes[GLFW_GAMEPAD_AXIS_LEFT_X];
+    float leftY = state.axes[GLFW_GAMEPAD_AXIS_LEFT_Y];
+
+    // Apply deadzone
+    if (fabs(leftX) < controllerDeadzone) leftX = 0.0f;
+    if (fabs(leftY) < controllerDeadzone) leftY = 0.0f;
+
+    // Create movement vector
+    glm::vec3 moveDir(0.0f);
+
+    // Forward/backward
+    glm::vec3 front = camera.Front;
+    front.y = 0.0f; // Restrict to XZ plane
+    front = glm::normalize(front);
+    moveDir -= front * leftY; // Inverted because GLFW uses positive Y for down
+
+    // Left/right
+    glm::vec3 right = camera.Right;
+    right.y = 0.0f; // Restrict to XZ plane
+    right = glm::normalize(right);
+    moveDir += right * leftX;
+
+    // Normalize and apply movement
+    if (glm::length(moveDir) > 0.0001f) {
+        moveDir = glm::normalize(moveDir);
+        glm::vec3 nextPos = camera.Position + moveDir * playerSpeed * deltaTime;
+
+        if (!collideWithMap(nextPos, map, playerWidth)) {
+            camera.Position = nextPos;
+        }
+    }
+
+    // Look around with right stick
+    float rightX = state.axes[GLFW_GAMEPAD_AXIS_RIGHT_X];
+    float rightY = state.axes[GLFW_GAMEPAD_AXIS_RIGHT_Y];
+
+    // Apply deadzone
+    if (fabs(rightX) < controllerDeadzone) rightX = 0.0f;
+    if (fabs(rightY) < controllerDeadzone) rightY = 0.0f;
+
+    // Only update if stick is moved enough
+    if (fabs(rightX) > 0.0f || fabs(rightY) > 0.0f) {
+        yaw += rightX * controllerLookSensitivity;
+        pitch -= rightY * controllerLookSensitivity; // Inverted Y
+
+        // Constrain pitch
+        if (pitch > 89.0f) pitch = 89.0f;
+        if (pitch < -89.0f) pitch = -89.0f;
+
+        camera.updateCameraVectors();
+    }
+
+    // Toggle flashlight with A button
+    static bool aButtonPressed = false;
+    if (state.buttons[GLFW_GAMEPAD_BUTTON_A] == GLFW_PRESS) {
+        if (!aButtonPressed) {
+            flashlightOn = !flashlightOn;
+            std::cout << "Flashlight " << (flashlightOn ? "on" : "off") << std::endl;
+            aButtonPressed = true;
+        }
+    } else {
+        aButtonPressed = false;
+    }
+
+    // Toggle normal maps with X button
+    static bool xButtonPressed = false;
+    if (state.buttons[GLFW_GAMEPAD_BUTTON_X] == GLFW_PRESS) {
+        if (!xButtonPressed) {
+            useNormalMaps = !useNormalMaps;
+            std::cout << "Normal mapping " << (useNormalMaps ? "enabled" : "disabled") << std::endl;
+            xButtonPressed = true;
+        }
+    } else {
+        xButtonPressed = false;
+    }
+
+            // Close application with Back + B buttons combination
+        static bool backButtonPressed = false;
+        if (state.buttons[GLFW_GAMEPAD_BUTTON_BACK] == GLFW_PRESS &&
+            state.buttons[GLFW_GAMEPAD_BUTTON_B] == GLFW_PRESS) {
+            if (!backButtonPressed) {
+                std::cout << "Exit combo pressed. Closing application..." << std::endl;
+                glfwSetWindowShouldClose(glfwGetCurrentContext(), true);
+                backButtonPressed = true;
+            }
+        } else {
+            backButtonPressed = false;
+        }
+
+    // Toggle grid with Y button
+    static bool yButtonPressed = false;
+    if (state.buttons[GLFW_GAMEPAD_BUTTON_Y] == GLFW_PRESS) {
+        if (!yButtonPressed) {
+            showGrid = !showGrid;
+            std::cout << "Grid " << (showGrid ? "enabled" : "disabled") << std::endl;
+            yButtonPressed = true;
+        }
+    } else {
+        yButtonPressed = false;
+    }
+
+    // Toggle fullscreen with Start button
+    static bool startButtonPressed = false;
+    if (state.buttons[GLFW_GAMEPAD_BUTTON_START] == GLFW_PRESS) {
+        if (!startButtonPressed) {
+            isFullscreen = !isFullscreen;
+
+            GLFWwindow* window = glfwGetCurrentContext();
+            if (isFullscreen) {
+                // Get primary monitor
+                GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+                const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+
+                // Switch to fullscreen
+                glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+                std::cout << "Switched to fullscreen mode" << std::endl;
+            } else {
+                // Switch back to windowed mode
+                glfwSetWindowMonitor(window, NULL, 100, 100, SCREEN_WIDTH, SCREEN_HEIGHT, 0);
+                std::cout << "Switched to windowed mode" << std::endl;
+            }
+
+            startButtonPressed = true;
+        }
+    } else {
+        startButtonPressed = false;
     }
 }
 
@@ -1733,172 +1982,208 @@ void createDefaultMapFile() {
     }
 }
 
-// In createShaderFiles(), update the vertex shader:
-void createShaderFiles() {
-    // Vertex shader
-    std::ofstream vShader("shader.vs");
-    if (vShader.is_open()) {
-        vShader << "#version 330 core\n";
-        vShader << "layout (location = 0) in vec3 aPos;\n";
-        vShader << "layout (location = 1) in vec3 aNormal;\n";
-        vShader << "layout (location = 2) in vec2 aTexCoord;\n";
-        vShader << "layout (location = 3) in vec3 aTangent;\n";
-        vShader << "layout (location = 4) in vec3 aBitangent;\n\n";
-        vShader << "out vec3 FragPos;\n";
-        vShader << "out vec3 Normal;\n";
-        vShader << "out vec2 TexCoord;\n";
-        vShader << "out mat3 TBN;\n\n";
-        vShader << "uniform mat4 model;\n";
-        vShader << "uniform mat4 view;\n";
-        vShader << "uniform mat4 projection;\n";
-        // Add texture scale uniform
-        vShader << "uniform vec2 textureScale = vec2(1.0, 1.0);\n";
-        // Add texture rotation uniform
-        vShader << "uniform float textureRotation = 0.0;\n\n";
-        vShader << "void main()\n";
-        vShader << "{\n";
-        vShader << "    FragPos = vec3(model * vec4(aPos, 1.0));\n";
-        vShader << "    Normal = mat3(transpose(inverse(model))) * aNormal;\n";
+                    // In createShaderFiles(), update the vertex shader:
+                    void createShaderFiles() {
+                        // Vertex shader
+                        std::ofstream vShader("shader.vs");
+                        if (vShader.is_open()) {
+                            vShader << "#version 330 core\n";
+                            vShader << "layout (location = 0) in vec3 aPos;\n";
+                            vShader << "layout (location = 1) in vec3 aNormal;\n";
+                            vShader << "layout (location = 2) in vec2 aTexCoord;\n";
+                            vShader << "layout (location = 3) in vec3 aTangent;\n";
+                            vShader << "layout (location = 4) in vec3 aBitangent;\n\n";
+                            vShader << "out vec3 FragPos;\n";
+                            vShader << "out vec3 Normal;\n";
+                            vShader << "out vec2 TexCoord;\n";
+                            vShader << "out mat3 TBN;\n\n";
+                            vShader << "uniform mat4 model;\n";
+                            vShader << "uniform mat4 view;\n";
+                            vShader << "uniform mat4 projection;\n";
+                            // Add texture scale uniform
+                            vShader << "uniform vec2 textureScale = vec2(1.0, 1.0);\n";
+                            // Add texture rotation uniform
+                            vShader << "uniform float textureRotation = 0.0;\n\n";
+                            vShader << "void main()\n";
+                            vShader << "{\n";
+                            vShader << "    FragPos = vec3(model * vec4(aPos, 1.0));\n";
+                            vShader << "    Normal = mat3(transpose(inverse(model))) * aNormal;\n";
 
-        // Add rotation to texture coordinates
-        vShader << "    // Apply rotation to texture coordinates\n";
-        vShader << "    vec2 rotatedTexCoord = aTexCoord;\n";
-        vShader << "    if (textureRotation != 0.0) {\n";
-        vShader << "        // Rotate around center (0.5, 0.5)\n";
-        vShader << "        vec2 center = vec2(0.5, 0.5);\n";
-        vShader << "        rotatedTexCoord -= center;\n";
-        vShader << "        \n";
-        vShader << "        // Apply rotation matrix\n";
-        vShader << "        float s = sin(textureRotation);\n";
-        vShader << "        float c = cos(textureRotation);\n";
-        vShader << "        rotatedTexCoord = vec2(\n";
-        vShader << "            rotatedTexCoord.x * c - rotatedTexCoord.y * s,\n";
-        vShader << "            rotatedTexCoord.x * s + rotatedTexCoord.y * c\n";
-        vShader << "        );\n";
-        vShader << "        \n";
-        vShader << "        // Move back from center\n";
-        vShader << "        rotatedTexCoord += center;\n";
-        vShader << "    }\n";
-        vShader << "    \n";
-        vShader << "    // Apply scale after rotation\n";
-        vShader << "    TexCoord = rotatedTexCoord * textureScale;\n";
+                            // Add rotation to texture coordinates
+                            vShader << "    // Apply rotation to texture coordinates\n";
+                            vShader << "    vec2 rotatedTexCoord = aTexCoord;\n";
+                            vShader << "    if (textureRotation != 0.0) {\n";
+                            vShader << "        // Rotate around center (0.5, 0.5)\n";
+                            vShader << "        vec2 center = vec2(0.5, 0.5);\n";
+                            vShader << "        rotatedTexCoord -= center;\n";
+                            vShader << "        \n";
+                            vShader << "        // Apply rotation matrix\n";
+                            vShader << "        float s = sin(textureRotation);\n";
+                            vShader << "        float c = cos(textureRotation);\n";
+                            vShader << "        rotatedTexCoord = vec2(\n";
+                            vShader << "            rotatedTexCoord.x * c - rotatedTexCoord.y * s,\n";
+                            vShader << "            rotatedTexCoord.x * s + rotatedTexCoord.y * c\n";
+                            vShader << "        );\n";
+                            vShader << "        \n";
+                            vShader << "        // Move back from center\n";
+                            vShader << "        rotatedTexCoord += center;\n";
+                            vShader << "    }\n";
+                            vShader << "    \n";
+                            vShader << "    // Apply scale after rotation\n";
+                            vShader << "    TexCoord = rotatedTexCoord * textureScale;\n";
 
-        vShader << "    // Calculate TBN matrix for normal mapping\n";
-        vShader << "    vec3 T = normalize(mat3(model) * aTangent);\n";
-        vShader << "    vec3 B = normalize(mat3(model) * aBitangent);\n";
-        vShader << "    vec3 N = normalize(mat3(model) * aNormal);\n";
-        vShader << "    TBN = mat3(T, B, N);\n";
-        vShader << "    gl_Position = projection * view * vec4(FragPos, 1.0);\n";
-        vShader << "}\n";
-        vShader.close();
-    }
+                            vShader << "    // Calculate TBN matrix for normal mapping\n";
+                            vShader << "    vec3 T = normalize(mat3(model) * aTangent);\n";
+                            vShader << "    vec3 B = normalize(mat3(model) * aBitangent);\n";
+                            vShader << "    vec3 N = normalize(mat3(model) * aNormal);\n";
+                            vShader << "    TBN = mat3(T, B, N);\n";
+                            vShader << "    gl_Position = projection * view * vec4(FragPos, 1.0);\n";
+                            vShader << "}\n";
+                            vShader.close();
+                        }
 
-    // The fragment shader stays the same as you currently have it
-    std::ofstream fShader("shader.fs");
-    if (fShader.is_open()) {
-        fShader << "#version 330 core\n";
-        fShader << "out vec4 FragColor;\n\n";
+                        // Fragment shader with multiple area lights
+                        std::ofstream fShader("shader.fs");
+                        if (fShader.is_open()) {
+                            fShader << "#version 330 core\n";
+                            fShader << "out vec4 FragColor;\n\n";
 
-        fShader << "in vec3 FragPos;\n";
-        fShader << "in vec3 Normal;\n";
-        fShader << "in vec2 TexCoord;\n";
-        fShader << "in mat3 TBN;\n\n";
+                            fShader << "in vec3 FragPos;\n";
+                            fShader << "in vec3 Normal;\n";
+                            fShader << "in vec2 TexCoord;\n";
+                            fShader << "in mat3 TBN;\n\n";
 
-        fShader << "uniform vec3 lightPos;\n";
-        fShader << "uniform vec3 lightColor;\n";
-        fShader << "uniform vec3 objectColor;\n";
-        fShader << "uniform sampler2D wallTexture;\n";
-        fShader << "uniform sampler2D normalMap;\n";
-        fShader << "uniform sampler2D roughnessMap;\n";
-        fShader << "uniform bool useTexture;\n";
-        fShader << "uniform bool useNormalMap;\n";
-        fShader << "uniform bool useRoughnessMap;\n";
-        fShader << "uniform sampler2D texture_diffuse1;\n";
-        fShader << "uniform int textureType;\n";
+                            fShader << "uniform vec3 lightPos;\n";
+                            fShader << "uniform vec3 lightColor;\n";
+                            fShader << "uniform vec3 objectColor;\n";
+                            fShader << "uniform sampler2D wallTexture;\n";
+                            fShader << "uniform sampler2D normalMap;\n";
+                            fShader << "uniform sampler2D roughnessMap;\n";
+                            fShader << "uniform bool useTexture;\n";
+                            fShader << "uniform bool useNormalMap;\n";
+                            fShader << "uniform bool useRoughnessMap;\n";
+                            fShader << "uniform sampler2D texture_diffuse1;\n";
+                            fShader << "uniform int textureType;\n\n";
 
-        // Flashlight uniforms
-        fShader << "uniform bool flashlightOn;\n";
-        fShader << "uniform vec3 viewPos;\n";
-        fShader << "uniform vec3 flashlightPos;\n";
-        fShader << "uniform vec3 flashlightDir;\n";
-        fShader << "uniform float flashlightCutoff;\n";
-        fShader << "uniform float flashlightOuterCutoff;\n";
-        fShader << "uniform float flashlightIntensity;\n\n";
+                            fShader << "// Flashlight uniforms\n";
+                            fShader << "uniform bool flashlightOn;\n";
+                            fShader << "uniform vec3 viewPos;\n";
+                            fShader << "uniform vec3 flashlightPos;\n";
+                            fShader << "uniform vec3 flashlightDir;\n";
+                            fShader << "uniform float flashlightCutoff;\n";
+                            fShader << "uniform float flashlightOuterCutoff;\n";
+                            fShader << "uniform float flashlightIntensity;\n\n";
 
-        fShader << "void main()\n";
-        fShader << "{\n";
-        fShader << "    // Ambient\n";
-        fShader << "    float ambientStrength = 0.3;\n";
-        fShader << "    vec3 ambient = ambientStrength * lightColor;\n\n";
+                            // Multiple area lights
+                            fShader << "// Area Light uniforms\n";
+                            fShader << "const int MAX_AREA_LIGHTS = 10;\n";  // Maximum number of area lights
+                            fShader << "uniform int numAreaLights;\n";
+                            fShader << "uniform bool areaLightActive[MAX_AREA_LIGHTS];\n";
+                            fShader << "uniform vec3 areaLightPos[MAX_AREA_LIGHTS];\n";
+                            fShader << "uniform vec3 areaLightColor[MAX_AREA_LIGHTS];\n";
+                            fShader << "uniform float areaLightIntensity[MAX_AREA_LIGHTS];\n";
+                            fShader << "uniform float areaLightRadius[MAX_AREA_LIGHTS];\n\n";
 
-        fShader << "    // Get normal from normal map if available\n";
-        fShader << "    vec3 norm;\n";
-        fShader << "    if(useNormalMap) {\n";
-        fShader << "        norm = texture(normalMap, TexCoord).rgb;\n";
-        fShader << "        norm = normalize(norm * 2.0 - 1.0);   // Convert from [0,1] to [-1,1]\n";
-        fShader << "        norm = normalize(TBN * norm);         // Convert to world space\n";
-        fShader << "    } else {\n";
-        fShader << "        norm = normalize(Normal);\n";
-        fShader << "    }\n\n";
+                            fShader << "void main()\n";
+                            fShader << "{\n";
+                            fShader << "    // Create flipped texture coordinates for all sampling\n";
+                            fShader << "    vec2 flippedCoord = vec2(1.0 - TexCoord.x, TexCoord.y);\n\n";
 
-        fShader << "    // Get roughness from roughness map if available\n";
-        fShader << "    float roughness = 1.0;\n";
-        fShader << "    if(useRoughnessMap) {\n";
-        fShader << "        roughness = texture(roughnessMap, TexCoord).r; // Assuming single channel\n";
-        fShader << "    }\n\n";
+                            fShader << "    // Ambient\n";
+                            fShader << "    float ambientStrength = 0.2;\n";
+                            fShader << "    vec3 ambient = ambientStrength * lightColor;\n\n";
 
-        fShader << "    // Diffuse from global light\n";
-        fShader << "    vec3 lightDir = normalize(lightPos - FragPos);\n";
-        fShader << "    float diff = max(dot(norm, lightDir), 0.0);\n";
-        fShader << "    // Adjust diffuse with roughness\n";
-        fShader << "    vec3 diffuse = diff * lightColor * roughness;\n\n";
+                            fShader << "    // Get normal from normal map if available\n";
+                            fShader << "    vec3 norm;\n";
+                            fShader << "    if(useNormalMap) {\n";
+                            fShader << "        norm = texture(normalMap, flippedCoord).rgb;\n";
+                            fShader << "        norm = normalize(norm * 2.0 - 1.0);   // Convert from [0,1] to [-1,1]\n";
+                            fShader << "        norm = normalize(TBN * norm);         // Convert to world space\n";
+                            fShader << "    } else {\n";
+                            fShader << "        norm = normalize(Normal);\n";
+                            fShader << "    }\n\n";
 
-        fShader << "    // Specular (Blinn-Phong)\n";
-        fShader << "    vec3 viewDir = normalize(viewPos - FragPos);\n";
-        fShader << "    vec3 halfwayDir = normalize(lightDir + viewDir);\n";
-        fShader << "    float spec = pow(max(dot(norm, halfwayDir), 0.0), 32.0);\n";
-        fShader << "    // Adjust specular with roughness (less specular with higher roughness)\n";
-        fShader << "    vec3 specular = spec * lightColor * (1.0 - roughness);\n\n";
+                            fShader << "    // Get roughness from roughness map if available\n";
+                            fShader << "    float roughness = 1.0;\n";
+                            fShader << "    if(useRoughnessMap) {\n";
+                            fShader << "        roughness = texture(roughnessMap, flippedCoord).r; // Assuming single channel\n";
+                            fShader << "    }\n\n";
 
-        fShader << "    // Flashlight (Spotlight)\n";
-        fShader << "    vec3 flashlightDiffuse = vec3(0.0);\n";
-        fShader << "    vec3 flashlightSpecular = vec3(0.0);\n";
-        fShader << "    if(flashlightOn) {\n";
-        fShader << "        vec3 flashDir = normalize(flashlightPos - FragPos);\n";
-        fShader << "        float theta = dot(flashDir, normalize(-flashlightDir));\n";
-        fShader << "        float epsilon = flashlightCutoff - flashlightOuterCutoff;\n";
-        fShader << "        float intensity = clamp((theta - flashlightOuterCutoff) / epsilon, 0.0, 1.0);\n";
-        fShader << "        \n";
-        fShader << "        if(theta > flashlightOuterCutoff) {\n";
-        fShader << "            float flashDiff = max(dot(norm, flashDir), 0.0);\n";
-        fShader << "            float flashSpec = pow(max(dot(norm, normalize(flashDir + viewDir)), 0.0), 32.0);\n";
-        fShader << "            \n";
-        fShader << "            flashlightDiffuse = flashDiff * lightColor * intensity * flashlightIntensity * roughness;\n";
-        fShader << "            flashlightSpecular = flashSpec * lightColor * intensity * flashlightIntensity * (1.0 - roughness);\n";
-        fShader << "        }\n";
-        fShader << "    }\n\n";
+                            fShader << "    // Diffuse from global light\n";
+                            fShader << "    vec3 lightDir = normalize(lightPos - FragPos);\n";
+                            fShader << "    float diff = max(dot(norm, lightDir), 0.0);\n";
+                            fShader << "    // Adjust diffuse with roughness\n";
+                            fShader << "    vec3 diffuse = diff * lightColor * roughness;\n\n";
 
-        // In createShaderFiles(), modify the fragment shader's "Result" section:
-        fShader << "    // Result\n";
-        fShader << "    vec3 result;\n";
-        fShader << "    if (useTexture) {\n";
-        fShader << "        vec3 texColor;\n";
-        fShader << "        if (textureType == 1) { // Model texture\n";
-        fShader << "            texColor = texture(texture_diffuse1, TexCoord).rgb;\n";
-        fShader << "        } else { // Wall texture\n";
-        fShader << "            texColor = texture(wallTexture, TexCoord).rgb;\n";
-        fShader << "        }\n";
-        fShader << "        // Apply lighting calculations to the texture color for both models and walls\n";
-        fShader << "        result = (ambient + diffuse + specular + flashlightDiffuse + flashlightSpecular) * texColor;\n";
-        fShader << "    } else {\n";
-        fShader << "        result = (ambient + diffuse + specular + flashlightDiffuse + flashlightSpecular) * objectColor;\n";
-        fShader << "    }\n\n";
+                            fShader << "    // Specular (Blinn-Phong)\n";
+                            fShader << "    vec3 viewDir = normalize(viewPos - FragPos);\n";
+                            fShader << "    vec3 halfwayDir = normalize(lightDir + viewDir);\n";
+                            fShader << "    float spec = pow(max(dot(norm, halfwayDir), 0.0), 32.0);\n";
+                            fShader << "    // Adjust specular with roughness (less specular with higher roughness)\n";
+                            fShader << "    vec3 specular = spec * lightColor * (1.0 - roughness);\n\n";
 
-        fShader << "    FragColor = vec4(result, 1.0);\n";
-        fShader << "}\n";
-        fShader.close();
-    }
-}
+                            fShader << "    // Flashlight (Spotlight)\n";
+                            fShader << "    vec3 flashlightDiffuse = vec3(0.0);\n";
+                            fShader << "    vec3 flashlightSpecular = vec3(0.0);\n";
+                            fShader << "    if(flashlightOn) {\n";
+                            fShader << "        vec3 flashDir = normalize(flashlightPos - FragPos);\n";
+                            fShader << "        float theta = dot(flashDir, normalize(-flashlightDir));\n";
+                            fShader << "        float epsilon = flashlightCutoff - flashlightOuterCutoff;\n";
+                            fShader << "        float intensity = clamp((theta - flashlightOuterCutoff) / epsilon, 0.0, 1.0);\n";
+                            fShader << "        \n";
+                            fShader << "        if(theta > flashlightOuterCutoff) {\n";
+                            fShader << "            float flashDiff = max(dot(norm, flashDir), 0.0);\n";
+                            fShader << "            float flashSpec = pow(max(dot(norm, normalize(flashDir + viewDir)), 0.0), 32.0);\n";
+                            fShader << "            \n";
+                            fShader << "            flashlightDiffuse = flashDiff * lightColor * intensity * flashlightIntensity * roughness;\n";
+                            fShader << "            flashlightSpecular = flashSpec * lightColor * intensity * flashlightIntensity * (1.0 - roughness);\n";
+                            fShader << "        }\n";
+                            fShader << "    }\n\n";
+
+                            // Area Lights - updated to handle multiple lights
+                            fShader << "    // Area Light contributions\n";
+                            fShader << "    vec3 areaLightDiffuse = vec3(0.0);\n";
+                            fShader << "    vec3 areaLightSpecular = vec3(0.0);\n";
+                            fShader << "    for(int i = 0; i < numAreaLights; i++) {\n";
+                            fShader << "        if(areaLightActive[i]) {\n";
+                            fShader << "            // Calculate distance and falloff\n";
+                            fShader << "            vec3 areaDir = areaLightPos[i] - FragPos;\n";
+                            fShader << "            float distance = length(areaDir);\n";
+                            fShader << "            if(distance < areaLightRadius[i]) {\n";
+                            fShader << "                // Normalize direction\n";
+                            fShader << "                areaDir = normalize(areaDir);\n";
+                            fShader << "                // Calculate falloff (1 at center, 0 at radius)\n";
+                            fShader << "                float falloff = 1.0 - distance/areaLightRadius[i];\n";
+                            fShader << "                // Diffuse\n";
+                            fShader << "                float areaDiff = max(dot(norm, areaDir), 0.0);\n";
+                            fShader << "                areaLightDiffuse += areaDiff * areaLightColor[i] * areaLightIntensity[i] * roughness * falloff;\n";
+                            fShader << "                // Specular\n";
+                            fShader << "                float areaSpec = pow(max(dot(norm, normalize(areaDir + viewDir)), 0.0), 32.0);\n";
+                            fShader << "                areaLightSpecular += areaSpec * areaLightColor[i] * areaLightIntensity[i] * (1.0 - roughness) * falloff;\n";
+                            fShader << "            }\n";
+                            fShader << "        }\n";
+                            fShader << "    }\n\n";
+
+                            fShader << "    // Result\n";
+                            fShader << "    vec3 result;\n";
+                            fShader << "    if (useTexture) {\n";
+                            fShader << "        vec3 texColor;\n";
+                            fShader << "        if (textureType == 1) { // Model texture\n";
+                            fShader << "            texColor = texture(texture_diffuse1, vec2(TexCoord.x, TexCoord.y)).rgb;\n";
+                            fShader << "        } else { // Wall texture\n";
+                            fShader << "            texColor = texture(wallTexture, flippedCoord).rgb;\n";
+                            fShader << "        }\n";
+                            fShader << "        // Apply lighting calculations to the texture color for both models and walls\n";
+                            fShader << "        result = (ambient + diffuse + specular + flashlightDiffuse + flashlightSpecular + areaLightDiffuse + areaLightSpecular) * texColor;\n";
+                            fShader << "    } else {\n";
+                            fShader << "        result = (ambient + diffuse + specular + flashlightDiffuse + flashlightSpecular + areaLightDiffuse + areaLightSpecular) * objectColor;\n";
+                            fShader << "    }\n\n";
+
+                            fShader << "    FragColor = vec4(result, 1.0);\n";
+                            fShader << "}\n";
+                            fShader.close();
+                        }
+                    }
 
 int main() {
 
@@ -1948,6 +2233,30 @@ if (err != GLEW_OK) {
 std::cout << "OpenGL version: " << glGetString(GL_VERSION) << std::endl;
 std::cout << "GLSL version: " << glGetString(GL_SHADING_LANGUAGE_VERSION) << std::endl;
 
+
+// Initialize GLFW and GLEW, etc...
+
+// Initialize gamepad support
+glfwSetJoystickCallback([](int jid, int event) {
+    if (event == GLFW_CONNECTED) {
+        if (glfwJoystickIsGamepad(jid)) {
+            std::cout << "Controller connected: " << glfwGetGamepadName(jid) << std::endl;
+            controllerID = jid;
+            useController = true;
+        }
+    } else if (event == GLFW_DISCONNECTED) {
+        if (jid == controllerID) {
+            std::cout << "Controller disconnected." << std::endl;
+            controllerID = -1;
+            useController = false;
+            detectControllers(); // Check if there's another controller
+        }
+    }
+});
+
+// Detect controllers at startup
+detectControllers();
+
 // Enable depth testing
 glEnable(GL_DEPTH_TEST);
 
@@ -1957,7 +2266,7 @@ glEnable(GL_DEPTH_TEST);
 
 
     // Initialize camera
-    Camera camera(glm::vec3(2.5f, playerHeight, 2.5f));
+    Camera camera(glm::vec3(2.5f, playerHeight, 8.5f));
 
 
     //Textures handling manager
@@ -1979,13 +2288,30 @@ glEnable(GL_DEPTH_TEST);
     shader.setInt("wallTexture", 0); // Texture unit 0
     shader.setInt("normalMap", 1);   // Texture unit 1
 
+            // Add as many area lights as you need
+        areaLights.push_back({
+            glm::vec3(27.0f, 3.0f, 4.0f),  // position
+            glm::vec3(0.9f, 0.8f, 0.8f),   // color (warm yellowish)
+            1.0f,                          // intensity
+            8.0f,                          // radius
+            true                           // active
+        });
+
+        areaLights.push_back({
+            glm::vec3(36.0f, 3.0f, 4.0f),  // position
+            glm::vec3(0.9f, 0.8f, 0.8f),   // color (warm yellowish)
+            1.0f,                          // intensity
+            8.0f,                          // radius
+            true                           // active
+        });
+
 
     // Create cube model
     CubeModel cubeModel;
 
     //Models
-  Model cakeModel("Models/Cake/scene.gltf");
-
+    Model cakeModel("Models/Cake/scene.gltf");
+    Model dogModel("Models/Dog/scene.gltf");  // New model
 
 
                 // Main loop
@@ -1997,6 +2323,7 @@ glEnable(GL_DEPTH_TEST);
 
                     // Process input
                     processInput(window);
+                    processControllerInput(camera, map, deltaTime);
                     processMovement(camera, map, deltaTime);
 
                     // Update camera orientation based on mouse movement
@@ -2035,6 +2362,21 @@ glEnable(GL_DEPTH_TEST);
                     shader.setFloat("flashlightOuterCutoff", flashlightOuterCutoffCos);
                     shader.setFloat("flashlightIntensity", flashlightIntensity);
 
+
+                        // Add this after setting the flashlight uniforms:
+
+                            // Set area light uniforms
+                            shader.setInt("numAreaLights", areaLights.size());
+
+                            for (int i = 0; i < areaLights.size(); i++) {
+                                std::string indexStr = std::to_string(i);
+                                shader.setBool(("areaLightActive[" + indexStr + "]").c_str(), areaLights[i].active);
+                                shader.setVec3(("areaLightPos[" + indexStr + "]").c_str(), areaLights[i].position);
+                                shader.setVec3(("areaLightColor[" + indexStr + "]").c_str(), areaLights[i].color);
+                                shader.setFloat(("areaLightIntensity[" + indexStr + "]").c_str(), areaLights[i].intensity);
+                                shader.setFloat(("areaLightRadius[" + indexStr + "]").c_str(), areaLights[i].radius);
+}
+
                     // Render the map
                     for (int z = 0; z < map.height; ++z) {
                         for (int x = 0; x < map.width; ++x) {
@@ -2048,10 +2390,13 @@ glEnable(GL_DEPTH_TEST);
                                     // Set texture scaling appropriately
                                     float textureYScale = wallHeight / 2.0f;
                                     shader.setVec2("textureScale", glm::vec2(1.0f, textureYScale));
+
+
                                 // This will bind both the color texture, normal map, and roughness map if available
                                 textureManager.bindTexture(texID);
 
                                 shader.setBool("useTexture", texID > 0);
+                                 shader.setInt("textureType", 0);  // Use the same path as wall textures
                                 // Only use normal map if both available AND the toggle is on
                                 shader.setBool("useNormalMap", useNormalMaps && textureManager.hasNormalMapForTexture(texID));
                                 // Use roughness map if available
@@ -2061,12 +2406,14 @@ glEnable(GL_DEPTH_TEST);
                                     // Fallback to color for walls without texture
                                     shader.setVec3("objectColor", glm::vec3(0.7f, 0.7f, 0.7f));
                                 }
-                                // In your rendering loop where you're setting up textures before rendering an object
-                                if (texID == 5) { // For object_5 specifically
-                                    shader.setFloat("textureRotation", glm::radians(-90.0f));
-                                } else {
-                                    shader.setFloat("textureRotation", 0.0f);
-                                }
+                                //***** MANUAL TEXTURE RORATION FOR SPECIFIC PICTURES *****
+                                         // Set texture rotation if specified in the rotation map
+                                        auto rotIter = textureRotations.find(texID);
+                                        if (rotIter != textureRotations.end()) {
+                                            shader.setFloat("textureRotation", glm::radians(rotIter->second));
+                                        } else {
+                                            shader.setFloat("textureRotation", 0.0f);
+                                        }
 
                                    // Create model matrix with appropriate height
                                     glm::mat4 model = glm::mat4(1.0f);
@@ -2120,33 +2467,55 @@ glEnable(GL_DEPTH_TEST);
 
                     cubeModel.render();
 
-                    // Render cake model (as in your original code)
-                    glm::mat4 cakeModelMatrix = glm::mat4(1.0f);
-                    float posX = 12.0f;
-                    float posY = 0.5f;
-                    float posZ = 10.0f;
+                    // **********************  Render cake model **********************
+                            glm::mat4 cakeModelMatrix = glm::mat4(1.0f);
+                            float posX = 15.0f;
+                            float posY = 0.5f;
+                            float posZ = 10.0f;
 
-                    cakeModelMatrix = glm::translate(cakeModelMatrix, glm::vec3(posX, posY, posZ));
-                    float rotationAngle = currentFrame * glm::radians(45.0f); // Rotate 45 degrees per second
-                    cakeModelMatrix = glm::rotate(cakeModelMatrix, rotationAngle, glm::vec3(0.0f, 1.0f, 0.0f));
-                    cakeModelMatrix = glm::scale(cakeModelMatrix, glm::vec3(0.1f, 0.1f, 0.1f));
+                            cakeModelMatrix = glm::translate(cakeModelMatrix, glm::vec3(posX, posY, posZ));
+                            float rotationAngle = currentFrame * glm::radians(45.0f); // Rotate 45 degrees per second
+                            cakeModelMatrix = glm::rotate(cakeModelMatrix, rotationAngle, glm::vec3(0.0f, 1.0f, 0.0f));
+                            cakeModelMatrix = glm::scale(cakeModelMatrix, glm::vec3(0.1f, 0.1f, 0.1f));
 
-                    shader.setMat4("model", cakeModelMatrix);
-                    shader.setBool("useTexture", true);
-                    shader.setInt("textureType", 1);  // Signal it's a model texture
+                            shader.setMat4("model", cakeModelMatrix);
+                            shader.setBool("useTexture", true);
+                            shader.setInt("textureType", 1);  // Signal it's a model texture
 
-                                        // Add these lines to ensure proper lighting
-                    shader.setBool("useNormalMap", false);  // Models often don't have separate normal maps
-                    shader.setBool("useRoughnessMap", false);
-                    shader.setFloat("textureRotation", 0.0f);
+                                                // Add these lines to ensure proper lighting
+                            shader.setBool("useNormalMap", false);  // Models often don't have separate normal maps
+                            shader.setBool("useRoughnessMap", false);
+                            shader.setFloat("textureRotation", 0.0f);
 
-                    // Move viewPos uniform here to make sure it's set right before model rendering
-                    shader.setVec3("viewPos", camera.Position);
+                            // Move viewPos uniform here to make sure it's set right before model rendering
+                            shader.setVec3("viewPos", camera.Position);
 
-                    // Then draw the model
-                    cakeModel.Draw(shader);
+                            // Then draw the model
+                            cakeModel.Draw(shader);
 
-                    cakeModel.Draw(shader);
+
+
+                    // ****************************Render dog Model ******************
+                            glm::mat4 dogModelMatrix = glm::mat4(1.0f);
+                            dogModelMatrix = glm::translate(dogModelMatrix, glm::vec3(18.0f, 0.6f, 10.0f));
+                                dogModelMatrix = glm::rotate(dogModelMatrix, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+                            dogModelMatrix = glm::scale(dogModelMatrix, glm::vec3(0.50f, 0.50f, 0.50f)); // Adjust scale as needed
+                            shader.setMat4("model", dogModelMatrix);
+                            // Missing for dog model:
+                            shader.setBool("useTexture", true);
+                            shader.setInt("textureType", 1);  // Signal it's a model texture
+                            shader.setBool("useNormalMap", false);
+                            shader.setBool("useRoughnessMap", false);
+                            shader.setFloat("textureRotation", 0.0f);
+                            shader.setVec3("viewPos", camera.Position);
+
+
+                            // Before drawing the dog model
+                            shader.setVec2("textureScale", glm::vec2(1.00f, 1.00f));  // Reset to default scaling
+                            // Right before drawing the dog model
+
+                            dogModel.Draw(shader);
+
 
                     // Render grid if enabled
                     if (showGrid) {

@@ -17,6 +17,8 @@ uniform bool useNormalMap;
 uniform bool useRoughnessMap;
 uniform sampler2D texture_diffuse1;
 uniform int textureType;
+
+// Flashlight uniforms
 uniform bool flashlightOn;
 uniform vec3 viewPos;
 uniform vec3 flashlightPos;
@@ -25,16 +27,28 @@ uniform float flashlightCutoff;
 uniform float flashlightOuterCutoff;
 uniform float flashlightIntensity;
 
+// Area Light uniforms
+const int MAX_AREA_LIGHTS = 10;
+uniform int numAreaLights;
+uniform bool areaLightActive[MAX_AREA_LIGHTS];
+uniform vec3 areaLightPos[MAX_AREA_LIGHTS];
+uniform vec3 areaLightColor[MAX_AREA_LIGHTS];
+uniform float areaLightIntensity[MAX_AREA_LIGHTS];
+uniform float areaLightRadius[MAX_AREA_LIGHTS];
+
 void main()
 {
+    // Create flipped texture coordinates for all sampling
+    vec2 flippedCoord = vec2(1.0 - TexCoord.x, TexCoord.y);
+
     // Ambient
-    float ambientStrength = 0.3;
+    float ambientStrength = 0.2;
     vec3 ambient = ambientStrength * lightColor;
 
     // Get normal from normal map if available
     vec3 norm;
     if(useNormalMap) {
-        norm = texture(normalMap, TexCoord).rgb;
+        norm = texture(normalMap, flippedCoord).rgb;
         norm = normalize(norm * 2.0 - 1.0);   // Convert from [0,1] to [-1,1]
         norm = normalize(TBN * norm);         // Convert to world space
     } else {
@@ -44,7 +58,7 @@ void main()
     // Get roughness from roughness map if available
     float roughness = 1.0;
     if(useRoughnessMap) {
-        roughness = texture(roughnessMap, TexCoord).r; // Assuming single channel
+        roughness = texture(roughnessMap, flippedCoord).r; // Assuming single channel
     }
 
     // Diffuse from global light
@@ -78,19 +92,42 @@ void main()
         }
     }
 
+    // Area Light contributions
+    vec3 areaLightDiffuse = vec3(0.0);
+    vec3 areaLightSpecular = vec3(0.0);
+    for(int i = 0; i < numAreaLights; i++) {
+        if(areaLightActive[i]) {
+            // Calculate distance and falloff
+            vec3 areaDir = areaLightPos[i] - FragPos;
+            float distance = length(areaDir);
+            if(distance < areaLightRadius[i]) {
+                // Normalize direction
+                areaDir = normalize(areaDir);
+                // Calculate falloff (1 at center, 0 at radius)
+                float falloff = 1.0 - distance/areaLightRadius[i];
+                // Diffuse
+                float areaDiff = max(dot(norm, areaDir), 0.0);
+                areaLightDiffuse += areaDiff * areaLightColor[i] * areaLightIntensity[i] * roughness * falloff;
+                // Specular
+                float areaSpec = pow(max(dot(norm, normalize(areaDir + viewDir)), 0.0), 32.0);
+                areaLightSpecular += areaSpec * areaLightColor[i] * areaLightIntensity[i] * (1.0 - roughness) * falloff;
+            }
+        }
+    }
+
     // Result
     vec3 result;
     if (useTexture) {
         vec3 texColor;
         if (textureType == 1) { // Model texture
-            texColor = texture(texture_diffuse1, TexCoord).rgb;
+            texColor = texture(texture_diffuse1, vec2(TexCoord.x, TexCoord.y)).rgb;
         } else { // Wall texture
-            texColor = texture(wallTexture, TexCoord).rgb;
+            texColor = texture(wallTexture, flippedCoord).rgb;
         }
         // Apply lighting calculations to the texture color for both models and walls
-        result = (ambient + diffuse + specular + flashlightDiffuse + flashlightSpecular) * texColor;
+        result = (ambient + diffuse + specular + flashlightDiffuse + flashlightSpecular + areaLightDiffuse + areaLightSpecular) * texColor;
     } else {
-        result = (ambient + diffuse + specular + flashlightDiffuse + flashlightSpecular) * objectColor;
+        result = (ambient + diffuse + specular + flashlightDiffuse + flashlightSpecular + areaLightDiffuse + areaLightSpecular) * objectColor;
     }
 
     FragColor = vec4(result, 1.0);
